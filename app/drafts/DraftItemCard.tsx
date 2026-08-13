@@ -1,0 +1,29 @@
+import { formatItemNumber } from "@/lib/item-number";
+import { ListingsEditor, type ListingsItem } from "./ListingsEditor";
+import { cardClass, mutedTextClass } from "@/lib/ui-classes";
+
+type Item = ListingsItem & {
+  internal_number: number;
+  brand: string | null;
+  model: string | null;
+  size: string | null;
+  batches: { label: string | null } | null;
+};
+
+export function DraftItemCard({ item }: { item: Item }) {
+  return (
+    <div className={`flex flex-col gap-4 ${cardClass}`}>
+      <div>
+        <h2 className="text-lg font-semibold text-[var(--color-text)]">
+          Towar {formatItemNumber(item.batches?.label, item.internal_number)}
+        </h2>
+        <p className={`text-sm ${mutedTextClass}`}>
+          {[item.brand, item.model, item.size].filter(Boolean).join(" · ") ||
+            "—"}
+        </p>
+      </div>
+
+      <ListingsEditor item={item} />
+    </div>
+  );
+}

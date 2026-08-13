@@ -3,6 +3,65 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Design tokens — light theme (default) */
+  --color-bg: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-surface-2: #ececf0;
+  --color-accent: #7c5cff;
+  --color-accent-fg: #5a3fe0;
+  --color-accent-bg: #ede9ff;
+  --color-text: #14141a;
+  --color-text-muted: #6b6b7a;
+  --color-border: #d3d3dc;
+  --color-success: #16833e;
+  --color-success-bg: #e3f6ea;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fbe2e2;
+  --color-warning: #92660b;
+  --color-warning-bg: #fbf0d9;
+
+  /* Solid-fill success (e.g. export button): fixed, not theme-relative —
+     --color-success itself is a bright fg tone in dark mode and doesn't
+     hold white button text reliably. */
+  --color-success-solid: #1d6b3b;
+
+  /* Radii — same across themes */
+  --radius-sm: 11px;
+  --radius-md: 17px;
+
+  /* Spacing — same across themes */
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2.5rem;
+  --card-padding: 1.25rem;
+  --gap-default: 0.75rem;
+}
+
+[data-theme="dark"] {
+  /* Note: --background/--foreground stay driven by prefers-color-scheme
+     only (see @media block below), not by this attribute. The app shell
+     (header, body, all pages) now runs entirely on --color-* tokens; the
+     old pair only remains for bg-foreground/text-background utility
+     classes still used by out-of-scope pages (app/batches, app/login). */
+
+  --color-bg: #0a0a0f;
+  --color-surface: #1a1a22;
+  --color-surface-2: #232330;
+  --color-accent: #7c5cff;
+  --color-accent-fg: #b7a6ff;
+  --color-accent-bg: #2d2447;
+  --color-text: #ffffff;
+  --color-text-muted: #9c9cb0;
+  --color-border: #40414f;
+  --color-success: #4ade80;
+  --color-success-bg: #123822;
+  --color-danger: #f87171;
+  --color-danger-bg: #3a1d22;
+  --color-warning: #e8c766;
+  --color-warning-bg: #3a3420;
 }
 
 @theme inline {
@@ -13,14 +72,48 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
+@media print {
+  /* Force light, ink-friendly token values regardless of the active
+     data-theme, and hide chrome that has no place on paper (nav header,
+     filter/search controls, action buttons). Components stay on the same
+     --color-* tokens — only the print medium's values change here. */
+  :root,
+  [data-theme="dark"] {
+    --color-bg: #ffffff;
+    --color-surface: #ffffff;
+    --color-surface-2: #f0f0f0;
+    --color-text: #000000;
+    --color-text-muted: #444444;
+    --color-border: #cccccc;
+    --color-accent-bg: #f0f0f0;
+    --color-accent-fg: #000000;
+    --color-success-bg: #ffffff;
+    --color-danger-bg: #ffffff;
+    --color-warning-bg: #ffffff;
+  }
+
+  header,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
 }
