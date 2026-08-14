@@ -1,5 +1,5 @@
 import { formatItemNumber } from "@/lib/item-number";
-import { ListingsEditor, type ListingsItem } from "./ListingsEditor";
+import { ListingsEditor, type ListingsItem, type PhotoSetOption } from "./ListingsEditor";
 import { cardClass, mutedTextClass } from "@/lib/ui-classes";
 
 type Item = ListingsItem & {
@@ -10,7 +10,15 @@ type Item = ListingsItem & {
   batches: { label: string | null } | null;
 };
 
-export function DraftItemCard({ item }: { item: Item }) {
+export function DraftItemCard({
+  item,
+  accountNames,
+  photoSets,
+}: {
+  item: Item;
+  accountNames: string[];
+  photoSets: PhotoSetOption[];
+}) {
   return (
     <div className={`flex flex-col gap-4 ${cardClass}`}>
       <div>
@@ -23,7 +31,7 @@ export function DraftItemCard({ item }: { item: Item }) {
         </p>
       </div>
 
-      <ListingsEditor item={item} />
+      <ListingsEditor item={item} accountNames={accountNames} photoSets={photoSets} />
     </div>
   );
 }

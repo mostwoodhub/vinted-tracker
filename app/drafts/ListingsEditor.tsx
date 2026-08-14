@@ -5,8 +5,11 @@ import { useFormStatus } from "react-dom";
 import {
   saveDraftChanges,
   markReadyToPublish,
+  addListingPublication,
+  removeListingPublication,
   type SaveDraftState,
   type PublishState,
+  type PublicationActionState,
 } from "./actions";
 import {
   buttonPrimaryClass,
@@ -18,7 +21,7 @@ import {
   successTextClass,
 } from "@/lib/ui-classes";
 
-const PLATFORM_LABELS: Record<string, string> = {
+export const PLATFORM_LABELS: Record<string, string> = {
   vinted: "Vinted",
   allegro: "Allegro",
   olx: "OLX",
@@ -32,11 +35,24 @@ const PLATFORM_LIMITS: Record<string, { title: number; description: number }> = 
 
 const PLATFORM_ORDER = ["vinted", "allegro", "olx"];
 
+export type Publication = {
+  id: string;
+  accountName: string;
+  photoSetId: string | null;
+};
+
 export type Listing = {
   id: string;
   platform: string;
   title: string | null;
   description: string | null;
+  status: string | null;
+  publications: Publication[];
+};
+
+export type PhotoSetOption = {
+  id: string;
+  label: string | null;
 };
 
 export type ListingsItem = {
@@ -47,6 +63,8 @@ export type ListingsItem = {
 
 const saveInitialState: SaveDraftState = { status: "idle" };
 const publishInitialState: PublishState = { status: "idle" };
+const addPublicationInitialState: PublicationActionState = { status: "idle" };
+const removePublicationInitialState: PublicationActionState = { status: "idle" };
 
 function SaveButton() {
   const { pending } = useFormStatus();
@@ -68,7 +86,172 @@ function PublishButton() {
   );
 }
 
-export function ListingsEditor({ item }: { item: ListingsItem }) {
+function RemovePublicationButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="rounded-full bg-[var(--color-danger-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-danger)] transition-opacity hover:opacity-80"
+    >
+      {pending ? "…" : "Usuń"}
+    </button>
+  );
+}
+
+function RemovePublicationForm({
+  itemId,
+  publication,
+  photoSetLabel,
+}: {
+  itemId: string;
+  publication: Publication;
+  photoSetLabel: string | null;
+}) {
+  const [state, action] = useActionState(
+    removeListingPublication,
+    removePublicationInitialState
+  );
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] px-2 py-1">
+        <span className="text-xs text-[var(--color-text)]">
+          ✅ {publication.accountName}
+          {photoSetLabel ? ` · ${photoSetLabel}` : ""}
+        </span>
+        <form action={action}>
+          <input type="hidden" name="itemId" value={itemId} />
+          <input type="hidden" name="publicationId" value={publication.id} />
+          <RemovePublicationButton />
+        </form>
+      </div>
+      {state.status === "error" && (
+        <span className="text-xs text-[var(--color-danger)]">{state.error}</span>
+      )}
+    </div>
+  );
+}
+
+function AddPublicationButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button type="submit" disabled={pending} className={buttonPrimaryClass}>
+      {pending ? "Dodawanie…" : "+ Dodaj publikację"}
+    </button>
+  );
+}
+
+// Publishing is per-platform *and* per-account, not all-or-nothing: the same
+// draft might go live on Vinted under two different accounts (yours, a
+// family member's) at once. Each posting is tracked separately here so it's
+// obvious which accounts still need the listing pulled down after a sale.
+function AddPublicationForm({
+  itemId,
+  listingId,
+  accountNames,
+  photoSets,
+}: {
+  itemId: string;
+  listingId: string;
+  accountNames: string[];
+  photoSets: PhotoSetOption[];
+}) {
+  const [state, action] = useActionState(
+    addListingPublication,
+    addPublicationInitialState
+  );
+
+  if (accountNames.length === 0) {
+    return (
+      <p className={`text-xs ${mutedTextClass}`}>
+        Brak kont — dodaj konto na stronie Konta, żeby móc oznaczyć publikację.
+      </p>
+    );
+  }
+
+  return (
+    <form action={action} className="flex flex-col gap-1">
+      <input type="hidden" name="itemId" value={itemId} />
+      <input type="hidden" name="listingId" value={listingId} />
+      <div className="flex flex-wrap gap-1">
+        <select name="accountName" defaultValue="" className={`${inputClass} text-xs`}>
+          <option value="" disabled>
+            Konto…
+          </option>
+          {accountNames.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        {photoSets.length > 0 && (
+          <select name="photoSetId" defaultValue="" className={`${inputClass} text-xs`}>
+            <option value="">Bez zestawu zdjęć</option>
+            {photoSets.map((set) => (
+              <option key={set.id} value={set.id}>
+                {set.label || "Zestaw zdjęć"}
+              </option>
+            ))}
+          </select>
+        )}
+        <AddPublicationButton />
+      </div>
+      {state.status === "error" && (
+        <span className="text-xs text-[var(--color-danger)]">{state.error}</span>
+      )}
+    </form>
+  );
+}
+
+function PlatformPublications({
+  itemId,
+  listing,
+  accountNames,
+  photoSets,
+}: {
+  itemId: string;
+  listing: Listing;
+  accountNames: string[];
+  photoSets: PhotoSetOption[];
+}) {
+  const photoSetLabelById = new Map(photoSets.map((s) => [s.id, s.label]));
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {listing.publications.map((publication) => (
+        <RemovePublicationForm
+          key={publication.id}
+          itemId={itemId}
+          publication={publication}
+          photoSetLabel={
+            publication.photoSetId
+              ? photoSetLabelById.get(publication.photoSetId) ?? null
+              : null
+          }
+        />
+      ))}
+      <AddPublicationForm
+        itemId={itemId}
+        listingId={listing.id}
+        accountNames={accountNames}
+        photoSets={photoSets}
+      />
+    </div>
+  );
+}
+
+export function ListingsEditor({
+  item,
+  accountNames = [],
+  photoSets = [],
+}: {
+  item: ListingsItem;
+  accountNames?: string[];
+  photoSets?: PhotoSetOption[];
+}) {
   const [saveState, saveAction] = useActionState(
     saveDraftChanges,
     saveInitialState
@@ -166,6 +349,18 @@ export function ListingsEditor({ item }: { item: ListingsItem }) {
                     className={inputClass}
                   />
                 </label>
+
+                <div className="flex flex-col gap-1">
+                  <span className={`text-xs ${mutedTextClass}`}>
+                    Opublikowano na kontach
+                  </span>
+                  <PlatformPublications
+                    itemId={item.id}
+                    listing={listing}
+                    accountNames={accountNames}
+                    photoSets={photoSets}
+                  />
+                </div>
               </div>
             );
           })}

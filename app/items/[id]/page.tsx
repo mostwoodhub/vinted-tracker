@@ -5,10 +5,12 @@ import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { StatusTrack } from "./StatusTrack";
 import { FinalPhotosUpload } from "./FinalPhotosUpload";
 import { WorkingPhotosUpload } from "./WorkingPhotosUpload";
+import { PhotoSetsManager, type PhotoSetData, type PhotoSetPhoto } from "./PhotoSetsManager";
 import { EditItemForm } from "./EditItemForm";
 import { RetryAiCardButton } from "./RetryAiCardButton";
 import { ReturnItemForm } from "./ReturnItemForm";
-import { ListingsEditor } from "@/app/drafts/ListingsEditor";
+import { ListingsEditor, PLATFORM_LABELS } from "@/app/drafts/ListingsEditor";
+import { mapListingsForEditor } from "@/lib/listing-publications";
 import { formatPln } from "@/lib/format";
 import {
   headingClass,
@@ -31,6 +33,8 @@ type ItemPhoto = {
   storage_path: string;
   is_working_photo: boolean;
 };
+
+type ItemPhotoWithSet = ItemPhoto & { photo_set_id: string | null };
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -83,12 +87,18 @@ export default async function ItemPage({
   const { data: item } = await supabaseAdmin
     .from("items")
     .select(
-      "*, batches(label), marketplace_listings(id, platform, title, description)"
+      "*, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at))"
     )
     .eq("id", id)
     .single();
 
   if (!item) notFound();
+
+  const listingsForEditor = mapListingsForEditor(item.marketplace_listings);
+
+  const activePublications = listingsForEditor.flatMap((l) =>
+    l.publications.map((p) => ({ platform: l.platform, accountName: p.accountName }))
+  );
 
   const employee = await getCurrentEmployee();
   const roles = getEffectiveRoles(employee);
@@ -96,11 +106,13 @@ export default async function ItemPage({
 
   const { data: photos } = await supabaseAdmin
     .from("item_photos")
-    .select("id, storage_path, is_working_photo")
+    .select("id, storage_path, is_working_photo, photo_set_id")
     .eq("item_id", id)
     .order("uploaded_at", { ascending: true });
 
-  const paths = (photos ?? []).map((photo) => photo.storage_path);
+  const photoRows = (photos ?? []) as ItemPhotoWithSet[];
+
+  const paths = photoRows.map((photo) => photo.storage_path);
   const signedUrlByPath = new Map<string, string>();
 
   if (paths.length > 0) {
@@ -113,8 +125,38 @@ export default async function ItemPage({
     }
   }
 
-  const workingPhotos = (photos ?? []).filter((p) => p.is_working_photo);
-  const finalPhotos = (photos ?? []).filter((p) => !p.is_working_photo);
+  const workingPhotos = photoRows.filter((p) => p.is_working_photo);
+  // Final photos with no set are the "classic" simple flow (pre-dates photo
+  // sets, or someone who doesn't need multiple accounts/backgrounds).
+  const finalPhotos = photoRows.filter((p) => !p.is_working_photo && !p.photo_set_id);
+
+  const { data: photoSetsRaw } = await supabaseAdmin
+    .from("item_photo_sets")
+    .select("id, label, account_name, sort_order")
+    .eq("item_id", id)
+    .order("sort_order", { ascending: true });
+
+  const photoSets: PhotoSetData[] = (photoSetsRaw ?? []).map((s) => ({
+    id: s.id,
+    label: s.label,
+    accountName: s.account_name,
+  }));
+
+  const photosBySet = new Map<string, PhotoSetPhoto[]>();
+  for (const photo of photoRows) {
+    if (photo.is_working_photo || !photo.photo_set_id) continue;
+    const url = signedUrlByPath.get(photo.storage_path);
+    if (!url) continue;
+    const list = photosBySet.get(photo.photo_set_id) ?? [];
+    list.push({ id: photo.id, url });
+    photosBySet.set(photo.photo_set_id, list);
+  }
+
+  const { data: accountRows } = await supabaseAdmin
+    .from("sales_accounts_archive")
+    .select("name")
+    .order("sort_order", { ascending: true });
+  const accountNames = (accountRows ?? []).map((a) => a.name).filter(Boolean) as string[];
 
   const showListingsEditor = AI_CARD_READY_OR_LATER.includes(item.status);
 
@@ -188,6 +230,25 @@ export default async function ItemPage({
 
         {item.status === "published" && <ReturnItemForm itemId={item.id} />}
 
+        {item.status === "sold" && activePublications.length > 0 && (
+          <div className={noticeWarningClass}>
+            <p className="font-medium">
+              ⚠️ Towar sprzedany, a wciąż oznaczony jako opublikowany na:
+            </p>
+            <ul className="flex flex-col gap-1">
+              {activePublications.map((p, i) => (
+                <li key={i}>
+                  {PLATFORM_LABELS[p.platform] ?? p.platform} — {p.accountName}
+                </li>
+              ))}
+            </ul>
+            <p className={`text-xs ${mutedTextClass}`}>
+              Pamiętaj usunąć ogłoszenie na tych kontach, a potem oznacz to niżej
+              w sekcji &bdquo;Opublikowano na kontach&rdquo;.
+            </p>
+          </div>
+        )}
+
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
           <Field label="Marka" value={item.brand ?? "—"} />
           <Field label="Model" value={item.model ?? "—"} />
@@ -231,12 +292,34 @@ export default async function ItemPage({
           </div>
         </div>
 
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-medium text-[var(--color-text)]">
+              Zestawy zdjęć na konta
+            </h2>
+            <p className={`text-xs ${mutedTextClass}`}>
+              Osobne zdjęcia (np. inne tło) dla każdego konta, żeby ta sama para
+              butów nie wyglądała identycznie na kilku ogłoszeniach naraz.
+            </p>
+          </div>
+          <PhotoSetsManager
+            itemId={item.id}
+            accountNames={accountNames}
+            sets={photoSets}
+            photosBySet={photosBySet}
+          />
+        </div>
+
         {showListingsEditor && (
           <div className="flex flex-col gap-3">
             <h2 className="text-lg font-semibold text-[var(--color-text)]">
               Szkice ogłoszeń AI
             </h2>
-            <ListingsEditor item={item} />
+            <ListingsEditor
+              item={{ id: item.id, price: item.price, marketplace_listings: listingsForEditor }}
+              accountNames={accountNames}
+              photoSets={photoSets.map((s) => ({ id: s.id, label: s.label }))}
+            />
           </div>
         )}
 
