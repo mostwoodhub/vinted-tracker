@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { formatItemNumber } from "@/lib/item-number";
-import { updateItemCostPrice, type UpdateCostState } from "./actions";
+import { updateItemCostPrice, deleteItems, type UpdateCostState } from "./actions";
 import { inputClass } from "@/lib/ui-classes";
 
 export type WarehouseCardItem = {
@@ -192,12 +200,87 @@ function CostEditor({
   );
 }
 
+function ItemDeleteButton({
+  itemId,
+  label,
+}: {
+  itemId: string;
+  label: string;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  function handleClick() {
+    if (!confirm(`Na pewno usunąć towar ${label} z magazynu?`)) return;
+    startTransition(async () => {
+      try {
+        await deleteItems([itemId]);
+        router.refresh();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Nie udało się usunąć towaru");
+      }
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={pending}
+      title="Usuń towar"
+      className="shrink-0 rounded-[var(--radius-sm)] p-2 text-[var(--color-danger)] transition-opacity hover:opacity-70 disabled:opacity-40"
+    >
+      {pending ? "…" : "🗑️"}
+    </button>
+  );
+}
+
+function BulkDeleteBar({
+  count,
+  onConfirm,
+  onCancel,
+  pending,
+}: {
+  count: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+  pending: boolean;
+}) {
+  return (
+    <div className="sticky top-2 z-10 flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-[var(--color-danger-bg)] px-4 py-3">
+      <p className="text-sm font-medium text-[var(--color-danger)]">
+        Zaznaczono: {count}
+      </p>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={pending}
+          className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+        >
+          Anuluj
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={pending}
+          className="rounded-[var(--radius-sm)] bg-[var(--color-danger-solid,var(--color-danger))] px-3 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {pending ? "Usuwanie…" : `🗑️ Usuń zaznaczone (${count})`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function WarehouseCards({
   items,
   defaultStatusFilter = "ready",
+  isAdmin = false,
 }: {
   items: WarehouseCardItem[];
   defaultStatusFilter?: string;
+  isAdmin?: boolean;
 }) {
   const brands = useMemo(
     () =>
@@ -225,6 +308,7 @@ export function WarehouseCards({
     [items]
   );
 
+  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState(defaultStatusFilter);
   const [brand, setBrand] = useState("");
   const [selectedSizes, setSelectedSizes] = useState<Set<string>>(new Set());
@@ -232,6 +316,32 @@ export function WarehouseCards({
   const [condition, setCondition] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [deletePending, startDeleteTransition] = useTransition();
+
+  const toggleItemSelected = (itemId: string) => {
+    setSelectedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
+
+  function handleBulkDelete() {
+    const count = selectedItems.size;
+    if (count === 0) return;
+    if (!confirm(`Na pewno usunąć ${count} towar(ów) z magazynu?`)) return;
+    startDeleteTransition(async () => {
+      try {
+        await deleteItems(Array.from(selectedItems));
+        setSelectedItems(new Set());
+        router.refresh();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Nie udało się usunąć towarów");
+      }
+    });
+  }
 
   const toggleSize = (size: string) => {
     setSelectedSizes((prev) => {
@@ -457,6 +567,15 @@ export function WarehouseCards({
         </div>
       </div>
 
+      {isAdmin && selectedItems.size > 0 && (
+        <BulkDeleteBar
+          count={selectedItems.size}
+          onConfirm={handleBulkDelete}
+          onCancel={() => setSelectedItems(new Set())}
+          pending={deletePending}
+        />
+      )}
+
       <div className="flex flex-col gap-[var(--gap-default)]">
         {filtered.map((item) => {
           const meta = statusMeta(item.status);
@@ -465,6 +584,16 @@ export function WarehouseCards({
               key={item.id}
               className="flex items-center gap-[var(--space-md)] rounded-[var(--radius-md)] bg-[var(--color-surface)] p-[var(--card-padding)]"
             >
+              {isAdmin && (
+                <input
+                  type="checkbox"
+                  checked={selectedItems.has(item.id)}
+                  onChange={() => toggleItemSelected(item.id)}
+                  className="h-4 w-4 shrink-0"
+                  aria-label={`Zaznacz ${formatItemNumber(item.batches?.label, item.internal_number)}`}
+                />
+              )}
+
               {item.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -523,6 +652,13 @@ export function WarehouseCards({
                   {item.price != null ? `${item.price} zł` : "—"}
                 </p>
               </div>
+
+              {isAdmin && (
+                <ItemDeleteButton
+                  itemId={item.id}
+                  label={formatItemNumber(item.batches?.label, item.internal_number)}
+                />
+              )}
             </div>
           );
         })}

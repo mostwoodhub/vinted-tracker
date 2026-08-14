@@ -1,10 +1,14 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { WarehouseCards, type WarehouseCardItem } from "@/app/warehouse/WarehouseCards";
 import { headingClass, pageWrapClass } from "@/lib/ui-classes";
 
 const PENDING_STATUSES = ["received", "photos_uploaded", "ai_card_ready"];
 
 export default async function PendingPage() {
+  const employee = await getCurrentEmployee();
+  const isAdmin = getEffectiveRoles(employee).has("admin");
+
   const { data: items } = await supabaseAdmin
     .from("items")
     .select(
@@ -74,7 +78,7 @@ export default async function PendingPage() {
     <div className={pageWrapClass}>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-[var(--space-lg)] px-6 py-12">
         <h1 className={headingClass}>Oczekujące</h1>
-        <WarehouseCards items={cardItems} defaultStatusFilter="" />
+        <WarehouseCards items={cardItems} defaultStatusFilter="" isAdmin={isAdmin} />
       </div>
     </div>
   );

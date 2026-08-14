@@ -1,7 +1,11 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { WarehouseCards, type WarehouseCardItem } from "./WarehouseCards";
 
 export default async function WarehousePage() {
+  const employee = await getCurrentEmployee();
+  const isAdmin = getEffectiveRoles(employee).has("admin");
+
   const { data: items } = await supabaseAdmin
     .from("items")
     .select(
@@ -72,7 +76,7 @@ export default async function WarehousePage() {
         <h1 className="text-3xl font-bold tracking-tight text-[var(--color-text)]">
           Magazyn
         </h1>
-        <WarehouseCards items={cardItems} />
+        <WarehouseCards items={cardItems} isAdmin={isAdmin} />
       </div>
     </div>
   );

@@ -39,3 +39,21 @@ export async function updateItemCostPrice(
 
   return { status: "success" };
 }
+
+export async function deleteItems(itemIds: string[]) {
+  const access = await checkRole("admin");
+  if (!access.ok) throw new Error(access.error);
+
+  const ids = itemIds.filter(Boolean);
+  if (ids.length === 0) return;
+
+  const { error } = await supabaseAdmin
+    .from("items")
+    .update({ deleted_at: new Date().toISOString() })
+    .in("id", ids);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/warehouse");
+  revalidatePath("/pending");
+}
