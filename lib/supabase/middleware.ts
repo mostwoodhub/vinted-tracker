@@ -1,7 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login"];
+// /reset-password must stay public: the recovery link's session lives only
+// in the URL hash, processed client-side — the server-side check below would
+// otherwise redirect the user to /login before that client code ever runs.
+const PUBLIC_PATHS = ["/login", "/reset-password"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
