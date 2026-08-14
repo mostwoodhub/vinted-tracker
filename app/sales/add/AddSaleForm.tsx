@@ -32,6 +32,54 @@ const VAT_MODES: { value: string; label: string }[] = [
 const DEFAULT_COUNTRY = "Polska";
 const DEFAULT_PLATFORM = "Vinted";
 
+const ITEM_STATUS_LABELS: Record<string, string> = {
+  received: "Przyjęto",
+  photos_uploaded: "Zdjęcia",
+  ai_card_ready: "Karta AI",
+  ready_to_publish: "Gotowe do publikacji",
+  published: "Opublikowano",
+  sold: "Sprzedano",
+  returned: "Zwrot",
+};
+
+// Live feedback under "Numer obuwia" — the field stays free text (plenty of
+// sales are for things never run through Intake at all, e.g. personal items
+// sold alongside stock), this just makes a mismatch visible instead of a
+// silent no-op: see lib/item-sale-link.ts for why that matters for batch
+// "Sprzedano X z N" counts.
+function ItemMatchHint({
+  shoeId,
+  itemStatusByNumber,
+}: {
+  shoeId: string;
+  itemStatusByNumber: Record<string, string>;
+}) {
+  const trimmed = shoeId.trim();
+  if (!trimmed) return null;
+  const status = itemStatusByNumber[trimmed];
+
+  if (status === undefined) {
+    return (
+      <span className={`text-xs ${mutedTextClass}`}>
+        — Brak takiego towaru w Magazynie (sprzedaż i tak się zapisze, ale nie
+        wliczy się do statystyk partii)
+      </span>
+    );
+  }
+  if (status === "sold") {
+    return (
+      <span className="text-xs text-[var(--color-danger)]">
+        ⚠ Ten towar jest już oznaczony jako sprzedany
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs text-[var(--color-success)]">
+      ✓ Towar w Magazynie (status: {ITEM_STATUS_LABELS[status] ?? status})
+    </span>
+  );
+}
+
 type Pair = { shoeId: string; price: string; cost: string };
 type LabelSlot =
   | { kind: "empty" }
@@ -48,10 +96,12 @@ export function AddSaleForm({
   accountNames,
   isAdmin,
   initialSale,
+  itemStatusByNumber = {},
 }: {
   accountNames: string[];
   isAdmin: boolean;
   initialSale?: SaleRow;
+  itemStatusByNumber?: Record<string, string>;
 }) {
   const isEditing = Boolean(initialSale);
   const action = isEditing ? updateSale.bind(null, initialSale!.id) : createSale;
@@ -103,6 +153,15 @@ export function AddSaleForm({
   const label1InputRef = useRef<HTMLInputElement>(null);
   const label2InputRef = useRef<HTMLInputElement>(null);
 
+  // If the sale's current account was since renamed/deleted from the master
+  // list, keep it selectable so editing the sale doesn't silently reassign
+  // it to a different account just by opening the form.
+  const accountOptions = useMemo(() => {
+    const current = initialSale?.account_name;
+    if (current && !accountNames.includes(current)) return [current, ...accountNames];
+    return accountNames;
+  }, [accountNames, initialSale?.account_name]);
+
   const [country, setCountry] = useState(initialSale?.country ?? DEFAULT_COUNTRY);
   const [vatRate, setVatRate] = useState(
     numToInput(initialSale?.vat_rate) || String(COUNTRY_VAT_RATE_MODE[DEFAULT_COUNTRY])
@@ -148,8 +207,12 @@ export function AddSaleForm({
     if (newFiles.length === 0) return;
     const combined = [...photos, ...newFiles];
     setPhotos(combined);
-    syncPhotoInput(combined);
+    // Resetting .value on a file input also clears its .files — so this
+    // must happen BEFORE syncPhotoInput sets the real combined FileList,
+    // not after. Doing it after was silently wiping out every photo just
+    // added, so the form always submitted with none attached.
     e.target.value = "";
+    syncPhotoInput(combined);
   }
 
   function removeNewPhoto(index: number) {
@@ -329,6 +392,7 @@ export function AddSaleForm({
               onChange={(e) => setSingleShoeId(e.target.value)}
               className={inputClass}
             />
+            <ItemMatchHint shoeId={singleShoeId} itemStatusByNumber={itemStatusByNumber} />
           </label>
           <div />
           <label className="flex flex-col gap-1.5">
@@ -386,6 +450,7 @@ export function AddSaleForm({
                     onChange={(e) => updatePair(index, "shoeId", e.target.value)}
                     className={inputClass}
                   />
+                  <ItemMatchHint shoeId={pair.shoeId} itemStatusByNumber={itemStatusByNumber} />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className={labelClass}>Cena</span>
@@ -577,19 +642,18 @@ export function AddSaleForm({
 
         <label className="flex flex-col gap-1.5">
           <span className={labelClass}>Konto</span>
-          <input
-            type="text"
+          <select
             name="accountName"
-            list="account-options"
-            autoComplete="off"
             defaultValue={initialSale?.account_name ?? ""}
             className={inputClass}
-          />
-          <datalist id="account-options">
-            {accountNames.map((a) => (
-              <option key={a} value={a} />
+          >
+            <option value="">— wybierz —</option>
+            {accountOptions.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
             ))}
-          </datalist>
+          </select>
         </label>
 
         <label className="flex flex-col gap-1.5 sm:col-span-2">

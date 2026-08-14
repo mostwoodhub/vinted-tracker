@@ -39,6 +39,7 @@ const ADMIN_ONLY_LINKS: NavLink[] = [
   { href: "/statistics", label: "Statystyki" },
   { href: "/charts", label: "Wykresy" },
   { href: "/batches-archive", label: "Partie" },
+  { href: "/accounts", label: "Konta" },
   { href: "/admin/employees", label: "Pracownicy" },
 ];
 

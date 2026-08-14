@@ -19,7 +19,7 @@ export function buildBreakdown(sales: SaleRow[], keyFn: (sale: SaleRow) => strin
   for (const sale of sales) {
     const label = keyFn(sale) || "—";
     const entry = map.get(label) ?? { key: label, count: 0, totalProfit: 0, totalRevenue: 0 };
-    entry.count += 1;
+    entry.count += sale.quantity ?? 1;
     entry.totalProfit += sale.net_profit ?? 0;
     entry.totalRevenue += sale.sale_price ?? 0;
     map.set(label, entry);
@@ -79,9 +79,13 @@ export function computeSalesStatistics(
   expenses: ExpenseRow[],
   profiles: ProfileRow[]
 ): SalesStatistics {
-  const count = sales.length;
   const totalRevenue = sales.reduce((sum, s) => sum + (s.sale_price ?? 0), 0);
   const totalQuantity = sales.reduce((sum, s) => sum + (s.quantity ?? 1), 0);
+  // "Liczba sprzedaży" = suma par (quantity), nie liczba wierszy — dla
+  // zwykłych sprzedaży to prawie zawsze to samo (quantity=1), ale zbiorcze
+  // wpisy archiwalne (np. "Archiwum 2025") mają quantity > 1 na wiersz i
+  // liczenie wierszy drastycznie zaniżałoby wynik.
+  const count = totalQuantity;
   const totalCostOwn = sales.reduce((sum, s) => sum + (s.cost_price ?? 0), 0);
   const totalFees = sales.reduce((sum, s) => sum + (s.fee_amount ?? 0), 0);
   const totalVat = sales.reduce((sum, s) => sum + (s.vat_amount ?? 0), 0);

@@ -10,6 +10,7 @@ import {
   errorTextClass,
   mutedTextClass,
 } from "@/lib/ui-classes";
+import { renderPdfFirstPageToCanvas } from "@/lib/pdf-to-image";
 
 type Rect = { x: number; y: number; width: number; height: number };
 type Stage = "ask-count" | "loading" | "crop" | "error";
@@ -89,21 +90,8 @@ export function LabelCropModal({
         const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
         if (isPdf) {
-          const pdfjsLib = await import("pdfjs-dist");
-          pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-            "pdfjs-dist/build/pdf.worker.min.mjs",
-            import.meta.url
-          ).toString();
           const buffer = await file.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-          const page = await pdf.getPage(1);
-          const viewport = page.getViewport({ scale: 2.5 });
-          const canvas = document.createElement("canvas");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) throw new Error("Canvas nie jest obsługiwany w tej przeglądarce");
-          await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+          const canvas = await renderPdfFirstPageToCanvas(buffer);
           url = canvas.toDataURL("image/png");
           width = canvas.width;
           height = canvas.height;
@@ -219,7 +207,7 @@ export function LabelCropModal({
         };
 
     const img = await loadImage(sourceUrl);
-    const canvas = document.createElement("canvas");
+    let canvas = document.createElement("canvas");
     canvas.width = Math.max(1, cropNatural.width);
     canvas.height = Math.max(1, cropNatural.height);
     const ctx = canvas.getContext("2d");
@@ -235,6 +223,22 @@ export function LabelCropModal({
       cropNatural.width,
       cropNatural.height
     );
+
+    // The print card (150x100mm) is landscape — if the saved crop came out
+    // portrait, rotate it 90° so it fills the card instead of being
+    // letterboxed tiny by object-fit: contain.
+    if (canvas.height > canvas.width) {
+      const rotated = document.createElement("canvas");
+      rotated.width = canvas.height;
+      rotated.height = canvas.width;
+      const rctx = rotated.getContext("2d");
+      if (rctx) {
+        rctx.translate(rotated.width / 2, rotated.height / 2);
+        rctx.rotate(Math.PI / 2);
+        rctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+        canvas = rotated;
+      }
+    }
 
     const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!blob) throw new Error("Nie udało się zapisać pliku");

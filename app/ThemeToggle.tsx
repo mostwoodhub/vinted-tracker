@@ -6,6 +6,11 @@ export function ThemeToggle() {
   const [theme, setTheme] = useState<string | null>(null);
 
   useEffect(() => {
+    // layout.tsx runs an inline script before hydration that sets
+    // data-theme on <html> from localStorage/system preference. `document`
+    // isn't available during SSR, so this must run after mount to read the
+    // real value without causing a hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(document.documentElement.getAttribute("data-theme") ?? "light");
   }, []);
 

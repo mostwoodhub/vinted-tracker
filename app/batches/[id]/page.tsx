@@ -14,7 +14,7 @@ export default async function BatchPage({
 
   const { data: batch } = await supabaseAdmin
     .from("batches")
-    .select("id, label, batch_number, purchase_cost")
+    .select("id, label, batch_number, purchase_cost, purchase_location, quantity")
     .eq("id", id)
     .single();
 
@@ -22,12 +22,13 @@ export default async function BatchPage({
 
   const { data: items } = await supabaseAdmin
     .from("items")
-    .select("id, internal_number, brand, size, cost_price")
+    .select("id, internal_number, brand, size, cost_price, status")
     .eq("batch_id", id)
     .order("internal_number", { ascending: false });
 
   const rows = items ?? [];
   const unpricedCount = rows.filter((item) => item.cost_price == null).length;
+  const soldCount = rows.filter((item) => item.status === "sold").length;
 
   return (
     <div className={pageWrapClass}>
@@ -40,7 +41,10 @@ export default async function BatchPage({
           batchId={batch.id}
           label={batch.label}
           purchaseCost={batch.purchase_cost}
+          purchaseLocation={batch.purchase_location}
+          quantity={batch.quantity}
           itemCount={rows.length}
+          soldCount={soldCount}
           unpricedCount={unpricedCount}
         />
 

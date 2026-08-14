@@ -147,6 +147,11 @@ export default async function ItemPage({
       .maybeSingle();
 
     if (statusLog) {
+      // This is a Server Component (no "use client") — it renders once per
+      // request on the server, not repeatedly on the client, so Date.now()
+      // here isn't subject to the client re-render purity concerns the
+      // react-hooks/purity rule is meant to catch.
+      // eslint-disable-next-line react-hooks/purity
       const elapsed = Date.now() - new Date(statusLog.changed_at).getTime();
       showRetryAiCard = elapsed > RETRY_THRESHOLD_MS;
     }

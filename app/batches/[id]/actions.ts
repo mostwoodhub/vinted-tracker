@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
@@ -21,6 +20,7 @@ export async function updateBatchPurchaseCost(
   if (!batchId) return { status: "error", error: "Brak partii" };
 
   const label = String(formData.get("label") ?? "").trim();
+  const purchaseLocation = String(formData.get("purchaseLocation") ?? "").trim();
 
   const raw = String(formData.get("purchaseCost") ?? "").trim();
   let purchaseCost: number | null = null;
@@ -31,15 +31,30 @@ export async function updateBatchPurchaseCost(
     }
   }
 
+  const quantityRaw = String(formData.get("quantity") ?? "").trim();
+  let quantity: number | null = null;
+  if (quantityRaw) {
+    quantity = Number(quantityRaw);
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      return { status: "error", error: "Nieprawidłowa ilość" };
+    }
+  }
+
   const { error } = await supabaseAdmin
     .from("batches")
-    .update({ label: label || null, purchase_cost: purchaseCost })
+    .update({
+      label: label || null,
+      purchase_cost: purchaseCost,
+      purchase_location: purchaseLocation || null,
+      quantity,
+    })
     .eq("id", batchId);
 
   if (error) return { status: "error", error: error.message };
 
   revalidatePath(`/batches/${batchId}`);
   revalidatePath("/dashboard");
+  revalidatePath("/batches-archive");
 
   return { status: "success" };
 }
@@ -69,7 +84,9 @@ export async function deleteBatch(
   if (deleteError) return { status: "error", error: deleteError.message };
 
   revalidatePath("/dashboard");
-  redirect("/dashboard");
+  revalidatePath("/batches-archive");
+
+  return { status: "success" };
 }
 
 export async function distributeBatchCost(

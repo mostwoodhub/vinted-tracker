@@ -110,8 +110,13 @@ export function IntakeForm({
   const [condition, setCondition] = useState("");
 
   useEffect(() => {
+    // Resets the form ref and local `condition` state after a successful
+    // submission. Kept as an effect (rather than the render-time
+    // previous-state pattern) because it touches formRef.current, and refs
+    // must not be read or written during render.
     if (state.status === "success") {
       formRef.current?.reset();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCondition("");
     }
   }, [state]);

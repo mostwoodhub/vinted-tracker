@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
+import { getItemStatusByNumber } from "@/lib/item-numbers";
 import { AddSaleForm } from "@/app/sales/add/AddSaleForm";
 import type { SaleRow } from "@/lib/sales-types";
 import { headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
@@ -35,6 +36,7 @@ export default async function EditSalePage({
     .order("sort_order", { ascending: true });
 
   const accountNames = (data ?? []).map((row) => row.name).filter(Boolean) as string[];
+  const itemStatusByNumber = await getItemStatusByNumber();
 
   return (
     <div className={pageWrapClass}>
@@ -46,7 +48,12 @@ export default async function EditSalePage({
           </Link>
         </div>
 
-        <AddSaleForm accountNames={accountNames} isAdmin={roles.has("admin")} initialSale={sale as SaleRow} />
+        <AddSaleForm
+          accountNames={accountNames}
+          isAdmin={roles.has("admin")}
+          initialSale={sale as SaleRow}
+          itemStatusByNumber={itemStatusByNumber}
+        />
       </div>
     </div>
   );

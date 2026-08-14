@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
 import { formatItemNumber } from "@/lib/item-number";
 import { updateItemCostPrice, type UpdateCostState } from "./actions";
 import { inputClass } from "@/lib/ui-classes";
@@ -136,9 +135,14 @@ function CostEditor({
   );
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  // Close the editor once when a save succeeds — computed during render
+  // (comparing against the previous state) instead of in an effect, per
+  // https://react.dev/learn/you-might-not-need-an-effect.
+  const [handledState, setHandledState] = useState(state);
+  if (state !== handledState) {
+    setHandledState(state);
     if (state.status === "success") setEditing(false);
-  }, [state]);
+  }
 
   useEffect(() => {
     if (editing) {

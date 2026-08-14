@@ -19,7 +19,6 @@ export function RoleToggle({
 
   useEffect(() => {
     if (state.status === "error") {
-      // eslint-disable-next-line no-alert
       alert(state.error);
     }
   }, [state]);

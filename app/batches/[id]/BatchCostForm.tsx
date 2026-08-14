@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import {
   updateBatchPurchaseCost,
@@ -54,13 +55,19 @@ export function BatchCostForm({
   batchId,
   label,
   purchaseCost,
+  purchaseLocation,
+  quantity,
   itemCount,
+  soldCount,
   unpricedCount,
 }: {
   batchId: string;
   label: string | null;
   purchaseCost: number | null;
+  purchaseLocation: string | null;
+  quantity: number | null;
   itemCount: number;
+  soldCount: number;
   unpricedCount: number;
 }) {
   const [saveState, saveAction] = useActionState(
@@ -72,7 +79,15 @@ export function BatchCostForm({
     initialState
   );
   const [deleteState, deleteAction] = useActionState(deleteBatch, initialState);
+  // Same logic as the batches-archive card: "Ilość" is declared up front and
+  // doesn't require every pair to already have an item row via Intake.
+  const totalDeclared = Math.max(quantity ?? 0, itemCount);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (deleteState.status === "success") router.push("/dashboard");
+  }, [deleteState, router]);
 
   return (
     <div className={`flex flex-col gap-4 ${cardClass}`}>
@@ -98,6 +113,27 @@ export function BatchCostForm({
             className={`${inputClass} max-w-xs`}
           />
         </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Gdzie kupiono</span>
+          <input
+            name="purchaseLocation"
+            type="text"
+            defaultValue={purchaseLocation ?? ""}
+            placeholder="np. sprzedawca, sklep, źródło"
+            className={`${inputClass} max-w-xs`}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Ilość (informacyjnie)</span>
+          <input
+            name="quantity"
+            type="number"
+            step="1"
+            min="0"
+            defaultValue={quantity ?? ""}
+            className={`${inputClass} max-w-xs`}
+          />
+        </label>
 
         {saveState.status === "error" && (
           <p className={errorTextClass} role="alert">
@@ -112,6 +148,12 @@ export function BatchCostForm({
           <SaveButton />
         </div>
       </form>
+
+      <p className="text-sm font-medium text-[var(--color-text)]">
+        Zostało {Math.max(0, totalDeclared - soldCount)}{" "}
+        {Math.max(0, totalDeclared - soldCount) === 1 ? "para" : "par"} · Sprzedano{" "}
+        {soldCount} z {totalDeclared} (dodano do systemu: {itemCount})
+      </p>
 
       <form action={distributeAction} className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-4">
         <input type="hidden" name="batchId" value={batchId} />

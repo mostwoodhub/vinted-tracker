@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { ALL_ROLES, checkRole, getEffectiveRoles } from "@/lib/auth";
 import { parseSaleFormFields } from "@/lib/sales-form-parse";
 import { uploadSaleFile, uploadSalePhotos } from "@/lib/sales-upload";
+import { markItemSoldByShoeId } from "@/lib/item-sale-link";
 
 export type AddSaleState = {
   status: "idle" | "error";
@@ -81,6 +82,15 @@ export async function createSale(
 
   if (error) {
     return { status: "error", error: error.message };
+  }
+
+  // Best-effort: mark the matching warehouse item(s) sold so batch "Sprzedano
+  // X z N" counts pick this up. Never blocks the sale itself — see
+  // markItemSoldByShoeId for why this can legitimately be a no-op.
+  if (parsed.items && parsed.items.length > 0) {
+    await Promise.all(parsed.items.map((item) => markItemSoldByShoeId(item.shoeId)));
+  } else {
+    await markItemSoldByShoeId(parsed.legacyShoeId);
   }
 
   redirect("/sales");

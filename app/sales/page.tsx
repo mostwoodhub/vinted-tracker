@@ -35,12 +35,19 @@ export default async function SalesPage() {
     .from("sales_profiles_archive")
     .select("id, email, display_name");
 
+  const { data: accountRows } = await supabaseAdmin
+    .from("sales_accounts_archive")
+    .select("name")
+    .order("sort_order", { ascending: true });
+  const accountNames = (accountRows ?? []).map((row) => row.name).filter(Boolean) as string[];
+
   return (
     <SalesView
       sales={sales}
       expenses={expenses}
       profiles={(profiles ?? []) as ProfileRow[]}
       isAdmin={roles.has("admin")}
+      accountNames={accountNames}
     />
   );
 }

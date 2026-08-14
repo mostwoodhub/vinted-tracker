@@ -132,11 +132,13 @@ export function SalesView({
   expenses,
   profiles,
   isAdmin,
+  accountNames,
 }: {
   sales: SaleRow[];
   expenses: ExpenseRow[];
   profiles: ProfileRow[];
   isAdmin: boolean;
+  accountNames?: string[];
 }) {
   const [search, setSearch] = useState("");
   const [period, setPeriod] = useState<PeriodFilterState>(defaultPeriodFilter());
@@ -211,6 +213,7 @@ export function SalesView({
           allBatchExpenses={expenses}
           profiles={profiles}
           period={period}
+          accountNames={accountNames}
         />
 
         <div className="flex items-center gap-2">

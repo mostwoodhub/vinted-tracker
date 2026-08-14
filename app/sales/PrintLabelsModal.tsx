@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SaleRow } from "@/lib/sales-types";
 import { defaultPeriodFilter, matchesPeriod, type PeriodFilterState } from "@/lib/period-filter";
-import { openLabelPrintWindow } from "@/lib/label-print";
+import { downloadLabelPdf } from "@/lib/label-print";
 import { PeriodFilterControl } from "@/app/PeriodFilterControl";
 import { LabelCropModal } from "@/app/LabelCropModal";
 import { attachSaleLabel } from "./actions";
@@ -20,15 +20,22 @@ import {
 export function PrintLabelsModal({
   sales,
   onClose,
+  initialPeriod,
 }: {
   sales: SaleRow[];
   onClose: () => void;
+  initialPeriod?: PeriodFilterState;
 }) {
   const router = useRouter();
-  const [period, setPeriod] = useState<PeriodFilterState>(defaultPeriodFilter());
+  // Starts synced to whatever period is currently selected on the Sales
+  // page — otherwise this defaulted to "today" regardless of what the user
+  // had picked there, so the modal often opened showing "no sales" even
+  // though the page behind it was full of them.
+  const [period, setPeriod] = useState<PeriodFilterState>(initialPeriod ?? defaultPeriodFilter());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [attachTarget, setAttachTarget] = useState<{ saleId: string; file: File } | null>(null);
   const [attaching, setAttaching] = useState(false);
+  const [generating, setGenerating] = useState<string | null>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
   const attachSaleIdRef = useRef<string | null>(null);
 
@@ -66,17 +73,38 @@ export function PrintLabelsModal({
     [sales, selected]
   );
 
-  function handlePrintLabelsOnly() {
-    openLabelPrintWindow(selectedSales, { includePhoto: false });
+  async function handlePrintLabelsOnly() {
+    setGenerating("labels");
+    try {
+      await downloadLabelPdf(selectedSales, { includePhoto: false }, "etykiety.pdf");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Nie udało się wygenerować PDF");
+    } finally {
+      setGenerating(null);
+    }
   }
 
-  function handlePrintWithPhoto() {
-    openLabelPrintWindow(selectedSales, { includePhoto: true });
+  async function handlePrintWithPhoto() {
+    setGenerating("photo");
+    try {
+      await downloadLabelPdf(selectedSales, { includePhoto: true }, "etykiety-ze-zdjeciem.pdf");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Nie udało się wygenerować PDF");
+    } finally {
+      setGenerating(null);
+    }
   }
 
-  function handleSaveBoth() {
-    openLabelPrintWindow(selectedSales, { includePhoto: false });
-    openLabelPrintWindow(selectedSales, { includePhoto: true });
+  async function handleSaveBoth() {
+    setGenerating("both");
+    try {
+      await downloadLabelPdf(selectedSales, { includePhoto: false }, "etykiety.pdf");
+      await downloadLabelPdf(selectedSales, { includePhoto: true }, "etykiety-ze-zdjeciem.pdf");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Nie udało się wygenerować PDF");
+    } finally {
+      setGenerating(null);
+    }
   }
 
   function openAttachPicker(saleId: string) {
@@ -190,27 +218,27 @@ export function PrintLabelsModal({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={selected.size === 0}
+              disabled={selected.size === 0 || generating !== null}
               onClick={handlePrintLabelsOnly}
               className={buttonSuccessClass}
             >
-              Tylko etykiety
+              {generating === "labels" ? "Generowanie…" : "Tylko etykiety"}
             </button>
             <button
               type="button"
-              disabled={selected.size === 0}
+              disabled={selected.size === 0 || generating !== null}
               onClick={handlePrintWithPhoto}
               className="flex h-10 items-center justify-center rounded-full bg-[var(--color-accent)] px-5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              Ze zdjęciem ({selected.size})
+              {generating === "photo" ? "Generowanie…" : `Ze zdjęciem (${selected.size})`}
             </button>
             <button
               type="button"
-              disabled={selected.size === 0}
+              disabled={selected.size === 0 || generating !== null}
               onClick={handleSaveBoth}
               className={buttonPrimaryClass}
             >
-              Zapisz oba pliki ({selected.size})
+              {generating === "both" ? "Generowanie…" : `Zapisz oba pliki (${selected.size})`}
             </button>
           </div>
         </div>
