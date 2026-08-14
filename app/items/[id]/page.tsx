@@ -7,6 +7,7 @@ import { FinalPhotosUpload } from "./FinalPhotosUpload";
 import { WorkingPhotosUpload } from "./WorkingPhotosUpload";
 import { PhotoSetsManager, type PhotoSetData, type PhotoSetPhoto } from "./PhotoSetsManager";
 import { EditItemForm } from "./EditItemForm";
+import { DeleteItemButton } from "./DeleteItemButton";
 import { RetryAiCardButton } from "./RetryAiCardButton";
 import { ReturnItemForm } from "./ReturnItemForm";
 import { ListingsEditor, PLATFORM_LABELS } from "@/app/drafts/ListingsEditor";
@@ -334,6 +335,13 @@ export default async function ItemPage({
             defects={item.defects ?? []}
             price={item.price}
             batchLabel={item.batches?.label ?? null}
+          />
+        )}
+
+        {roles.has("admin") && (
+          <DeleteItemButton
+            itemId={item.id}
+            label={formatItemNumber(item.batches?.label, item.internal_number)}
           />
         )}
       </div>

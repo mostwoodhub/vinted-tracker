@@ -296,6 +296,21 @@ export async function markAsReturned(
   return { status: "success" };
 }
 
+export async function deleteItem(itemId: string) {
+  const access = await checkRole("admin");
+  if (!access.ok) throw new Error(access.error);
+
+  const { error } = await supabaseAdmin
+    .from("items")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", itemId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/items/${itemId}`);
+  revalidatePath("/warehouse");
+}
+
 export type RetryAiCardState = {
   status: "idle" | "success" | "error";
   error?: string;

@@ -8,6 +8,7 @@ export default async function PhotoQueuePage() {
     .from("items")
     .select("id, internal_number, brand, size, batches(label)")
     .eq("status", "received")
+    .is("deleted_at", null)
     .order("internal_number", { ascending: true });
 
   const rows = (items ?? []) as unknown as {

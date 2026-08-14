@@ -24,6 +24,7 @@ export default async function BatchPage({
     .from("items")
     .select("id, internal_number, brand, size, cost_price, status")
     .eq("batch_id", id)
+    .is("deleted_at", null)
     .order("internal_number", { ascending: false });
 
   const rows = items ?? [];

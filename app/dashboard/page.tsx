@@ -36,7 +36,8 @@ export default async function DashboardPage() {
 
   const { data: items } = await supabaseAdmin
     .from("items")
-    .select("id, status, price, cost_price, batch_id");
+    .select("id, status, price, cost_price, batch_id")
+    .is("deleted_at", null);
 
   const rows = items ?? [];
 

@@ -46,7 +46,8 @@ export default async function BatchesArchivePage() {
   const { data: itemBatchLinks } = await supabaseAdmin
     .from("items")
     .select("batch_id, status")
-    .not("batch_id", "is", null);
+    .not("batch_id", "is", null)
+    .is("deleted_at", null);
 
   const itemCountByBatch = new Map<string, number>();
   const soldCountByBatch = new Map<string, number>();

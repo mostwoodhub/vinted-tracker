@@ -7,6 +7,7 @@ export default async function WarehousePage() {
     .select(
       "id, internal_number, brand, model, size, condition, condition_detail, price, cost_price, status, batches(id, label)"
     )
+    .is("deleted_at", null)
     .order("internal_number", { ascending: false });
 
   const rows = (items ?? []) as unknown as Omit<WarehouseCardItem, "photoUrl">[];
