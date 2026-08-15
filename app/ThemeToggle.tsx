@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 
+const THEME_ORDER = ["light", "dark", "latte"] as const;
+const THEME_ICON: Record<string, string> = {
+  light: "🌙", // shown when light is active — icon signals what you'll switch TO
+  dark: "☕",
+  latte: "☀️",
+};
+
 export function ThemeToggle() {
   const [theme, setTheme] = useState<string | null>(null);
 
@@ -15,7 +22,9 @@ export function ThemeToggle() {
   }, []);
 
   function toggle() {
-    const next = theme === "dark" ? "light" : "dark";
+    const current = theme ?? "light";
+    const currentIndex = THEME_ORDER.indexOf(current as (typeof THEME_ORDER)[number]);
+    const next = THEME_ORDER[(currentIndex + 1) % THEME_ORDER.length] ?? "light";
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("theme", next);
     setTheme(next);
@@ -25,10 +34,11 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      aria-label="Przełącz motyw"
+      aria-label="Przełącz motyw (jasny / ciemny / latte)"
+      title={theme ? `Motyw: ${theme}` : undefined}
       className="text-sm text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
     >
-      {theme === null ? "🌓" : theme === "dark" ? "☀️" : "🌙"}
+      {theme === null ? "🌓" : (THEME_ICON[theme] ?? "🌓")}
     </button>
   );
 }

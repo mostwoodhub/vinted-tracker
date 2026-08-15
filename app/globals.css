@@ -64,6 +64,30 @@
   --color-warning-bg: #3a3420;
 }
 
+[data-theme="latte"] {
+  /* Warm neutral theme — brown / gray / latte cream, with a bright
+     terracotta accent for contrast. Same not:[data-theme="light"] caveat
+     as dark: excluded explicitly below so legacy bg-foreground pages don't
+     flip dark under this theme too. */
+
+  --color-bg: #ece4d8;
+  --color-surface: #f8f4ee;
+  --color-surface-2: #ddd0bb;
+  --color-accent: #c2410c;
+  --color-accent-fg: #9a3209;
+  --color-accent-bg: #f6e0cf;
+  --color-text: #362e28;
+  --color-text-muted: #857a6d;
+  --color-border: #d3c6ae;
+  --color-success: #3f7d4a;
+  --color-success-bg: #e2efe2;
+  --color-danger: #b23a2f;
+  --color-danger-bg: #f6dedb;
+  --color-warning: #a6710f;
+  --color-warning-bg: #f6e8cd;
+  --color-success-solid: #2c6b3a;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -72,7 +96,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-theme="latte"]) {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
@@ -94,7 +118,8 @@ body {
      filter/search controls, action buttons). Components stay on the same
      --color-* tokens — only the print medium's values change here. */
   :root,
-  [data-theme="dark"] {
+  [data-theme="dark"],
+  [data-theme="latte"] {
     --color-bg: #ffffff;
     --color-surface: #ffffff;
     --color-surface-2: #f0f0f0;
