@@ -10,6 +10,7 @@ import {
 } from "./photo-set-actions";
 import { autoCropPhoto, type CropState } from "./crop-actions";
 import { FileDropzone } from "@/app/FileDropzone";
+import { DownloadPhotoButton } from "@/app/DownloadPhotoButton";
 import {
   buttonDangerClass,
   buttonPrimaryClass,
@@ -87,6 +88,9 @@ function PhotoTile({ itemId, photo }: { itemId: string; photo: PhotoSetPhoto }) 
           alt=""
           className="aspect-square w-full rounded-[var(--radius-sm)] object-cover"
         />
+        <div className="absolute bottom-1 left-1">
+          <DownloadPhotoButton url={photo.url} filename={`${photo.id}.jpg`} />
+        </div>
         <form action={action} className="absolute bottom-1 right-1">
           <input type="hidden" name="photoId" value={photo.id} />
           <input type="hidden" name="itemId" value={itemId} />

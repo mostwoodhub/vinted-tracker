@@ -15,6 +15,7 @@ import {
   labelClass,
   mutedTextClass,
   noticeSuccessClass,
+  noticeWarningClass,
   pageWrapClass,
 } from "@/lib/ui-classes";
 
@@ -107,7 +108,13 @@ export function IntakeForm({
 }: IntakeFormProps) {
   const [state, formAction] = useActionState(createItem, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const confirmDuplicateRef = useRef<HTMLInputElement>(null);
   const [condition, setCondition] = useState("");
+
+  function handleAddAnyway() {
+    if (confirmDuplicateRef.current) confirmDuplicateRef.current.value = "true";
+    formRef.current?.requestSubmit();
+  }
 
   useEffect(() => {
     // Resets the form ref and local `condition` state after a successful
@@ -127,6 +134,12 @@ export function IntakeForm({
         <h1 className={headingClass}>{heading}</h1>
 
       <form ref={formRef} action={formAction} className="flex flex-col gap-5">
+        <input
+          ref={confirmDuplicateRef}
+          type="hidden"
+          name="confirmDuplicate"
+          defaultValue="false"
+        />
         <div className="flex flex-col gap-1.5">
           <label htmlFor="brand" className={labelClass}>
             Marka
@@ -320,6 +333,19 @@ export function IntakeForm({
           <p className={errorTextClass} role="alert">
             {state.error}
           </p>
+        )}
+
+        {state.status === "duplicate" && (
+          <div className={noticeWarningClass}>
+            <p>⚠️ {state.error}</p>
+            <button
+              type="button"
+              onClick={handleAddAnyway}
+              className="w-fit rounded-full bg-[var(--color-warning-bg)] px-4 py-2 text-sm font-medium text-[var(--color-warning)] transition-opacity hover:opacity-80"
+            >
+              Dodaj mimo to
+            </button>
+          </div>
         )}
 
         <SubmitButton />

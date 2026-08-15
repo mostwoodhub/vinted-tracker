@@ -5,9 +5,10 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
 import { resolveBatchId } from "@/lib/batches";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
+import { formatItemNumber } from "@/lib/item-number";
 
 export type IntakeState = {
-  status: "idle" | "success" | "error";
+  status: "idle" | "success" | "error" | "duplicate";
   internalNumber?: string | number;
   batchLabel?: string;
   brand?: string;
@@ -31,6 +32,7 @@ export async function createItem(
   const priceRaw = String(formData.get("price") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim();
   const legacyNumber = String(formData.get("legacyNumber") ?? "").trim();
+  const confirmDuplicate = String(formData.get("confirmDuplicate") ?? "") === "true";
   const customDefect = String(formData.get("customDefect") ?? "").trim();
   const defects = formData.getAll("defects").map(String);
   if (customDefect) defects.push(customDefect);
@@ -69,6 +71,38 @@ export async function createItem(
   try {
     const batchId = await resolveBatchId(batchLabel);
 
+    // Duplicate-number safety net: someone re-entering the same physical
+    // shoe (or a label typo colliding with an existing one) is easy to miss
+    // by eye. This only warns — it never blocks — since a genuine duplicate
+    // pair (two identical shoes with the same old number written on them)
+    // is a real, valid case too.
+    if (legacyNumber && !confirmDuplicate) {
+      const { data: existingRaw } = await supabaseAdmin
+        .from("items")
+        .select("internal_number, brand, model, batches(label)")
+        .eq("legacy_number", legacyNumber)
+        .is("deleted_at", null)
+        .limit(1)
+        .maybeSingle();
+
+      const existing = existingRaw as unknown as {
+        internal_number: number;
+        brand: string | null;
+        model: string | null;
+        batches: { label: string | null } | { label: string | null }[] | null;
+      } | null;
+
+      if (existing) {
+        const existingBatchLabel = Array.isArray(existing.batches)
+          ? existing.batches[0]?.label ?? null
+          : existing.batches?.label ?? null;
+        return {
+          status: "duplicate",
+          error: `Towar ze starym numerem „${legacyNumber}” już jest w magazynie: ${formatItemNumber(existingBatchLabel, existing.internal_number)} · ${existing.brand ?? "—"} ${existing.model ?? ""}`.trim(),
+        };
+      }
+    }
+
     const { data: item, error } = await supabaseAdmin
       .from("items")
       .insert({
@@ -89,6 +123,15 @@ export async function createItem(
     if (error) {
       return { status: "error", error: error.message };
     }
+
+    // Baseline log entry so "how long has this sat without progress" can be
+    // computed later — items intaken before this existed simply won't have
+    // one, and staleness tracking treats that as "unknown" rather than 0.
+    await supabaseAdmin.from("item_status_log").insert({
+      item_id: item.id,
+      from_status: null,
+      to_status: "received",
+    });
 
     for (const photo of photos) {
       const extension = photo.name.includes(".")

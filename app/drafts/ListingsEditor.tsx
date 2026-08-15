@@ -86,6 +86,60 @@ function PublishButton() {
   );
 }
 
+function buildCopyText({
+  title,
+  description,
+  price,
+}: {
+  title: string;
+  description: string;
+  price: number | null;
+}) {
+  const priceLine = price != null ? `Cena: ${price} zł` : "";
+  return [title, "", description, priceLine].filter((line) => line !== "").join("\n");
+}
+
+function CopyDraftButton({
+  title,
+  description,
+  price,
+  label,
+  small = false,
+}: {
+  title: string;
+  description: string;
+  price: number | null;
+  label: string;
+  small?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleClick() {
+    const text = buildCopyText({ title, description, price });
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      alert("Nie udało się skopiować — zaznacz i skopiuj ręcznie.");
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={
+        small
+          ? "rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-xs font-medium text-[var(--color-text)] transition-opacity hover:opacity-80"
+          : `${buttonSecondaryClass}`
+      }
+    >
+      {copied ? "✅ Skopiowano" : `📋 ${label}`}
+    </button>
+  );
+}
+
 function RemovePublicationButton() {
   const { pending } = useFormStatus();
 
@@ -104,10 +158,16 @@ function RemovePublicationForm({
   itemId,
   publication,
   photoSetLabel,
+  title,
+  description,
+  price,
 }: {
   itemId: string;
   publication: Publication;
   photoSetLabel: string | null;
+  title: string;
+  description: string;
+  price: number | null;
 }) {
   const [state, action] = useActionState(
     removeListingPublication,
@@ -121,11 +181,20 @@ function RemovePublicationForm({
           ✅ {publication.accountName}
           {photoSetLabel ? ` · ${photoSetLabel}` : ""}
         </span>
-        <form action={action}>
-          <input type="hidden" name="itemId" value={itemId} />
-          <input type="hidden" name="publicationId" value={publication.id} />
-          <RemovePublicationButton />
-        </form>
+        <div className="flex items-center gap-1">
+          <CopyDraftButton
+            title={title}
+            description={description}
+            price={price}
+            label={`Kopiuj (${publication.accountName})`}
+            small
+          />
+          <form action={action}>
+            <input type="hidden" name="itemId" value={itemId} />
+            <input type="hidden" name="publicationId" value={publication.id} />
+            <RemovePublicationButton />
+          </form>
+        </div>
       </div>
       {state.status === "error" && (
         <span className="text-xs text-[var(--color-danger)]">{state.error}</span>
@@ -211,11 +280,13 @@ function PlatformPublications({
   listing,
   accountNames,
   photoSets,
+  price,
 }: {
   itemId: string;
   listing: Listing;
   accountNames: string[];
   photoSets: PhotoSetOption[];
+  price: number | null;
 }) {
   const photoSetLabelById = new Map(photoSets.map((s) => [s.id, s.label]));
 
@@ -231,6 +302,9 @@ function PlatformPublications({
               ? photoSetLabelById.get(publication.photoSetId) ?? null
               : null
           }
+          title={listing.title ?? ""}
+          description={listing.description ?? ""}
+          price={price}
         />
       ))}
       <AddPublicationForm
@@ -315,9 +389,18 @@ export function ListingsEditor({
                 key={platform}
                 className={`flex flex-col gap-2 ${cardSmClass}`}
               >
-                <h3 className="text-sm font-medium text-[var(--color-text)]">
-                  {PLATFORM_LABELS[platform] ?? platform}
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium text-[var(--color-text)]">
+                    {PLATFORM_LABELS[platform] ?? platform}
+                  </h3>
+                  <CopyDraftButton
+                    title={listing.title ?? ""}
+                    description={listing.description ?? ""}
+                    price={item.price}
+                    label="Kopiuj"
+                    small
+                  />
+                </div>
                 <input
                   type="hidden"
                   name={`${platform}_listingId`}
@@ -359,6 +442,7 @@ export function ListingsEditor({
                     listing={listing}
                     accountNames={accountNames}
                     photoSets={photoSets}
+                    price={item.price}
                   />
                 </div>
               </div>

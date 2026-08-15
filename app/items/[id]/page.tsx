@@ -8,6 +8,7 @@ import { WorkingPhotosUpload } from "./WorkingPhotosUpload";
 import { PhotoSetsManager, type PhotoSetData, type PhotoSetPhoto } from "./PhotoSetsManager";
 import { EditItemForm } from "./EditItemForm";
 import { DeleteItemButton } from "./DeleteItemButton";
+import { DownloadPhotoButton } from "@/app/DownloadPhotoButton";
 import { RetryAiCardButton } from "./RetryAiCardButton";
 import { ReturnItemForm } from "./ReturnItemForm";
 import { ListingsEditor, PLATFORM_LABELS } from "@/app/drafts/ListingsEditor";
@@ -65,13 +66,17 @@ function PhotoGrid({
         const url = signedUrlByPath.get(photo.storage_path);
         if (!url) return null;
         return (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={photo.id}
-            src={url}
-            alt=""
-            className="aspect-square w-full rounded-[var(--radius-sm)] object-cover"
-          />
+          <div key={photo.id} className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={url}
+              alt=""
+              className="aspect-square w-full rounded-[var(--radius-sm)] object-cover"
+            />
+            <div className="absolute bottom-1 right-1">
+              <DownloadPhotoButton url={url} filename={`${photo.id}.jpg`} />
+            </div>
+          </div>
         );
       })}
     </div>

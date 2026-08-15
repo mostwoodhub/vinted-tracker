@@ -1,5 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
+import {
+  fetchLastActivityByItem,
+  daysSince,
+  PROCESSING_STATUSES,
+} from "@/lib/item-aging";
 import { WarehouseCards, type WarehouseCardItem } from "./WarehouseCards";
 
 export default async function WarehousePage() {
@@ -65,10 +70,26 @@ export default async function WarehousePage() {
     }
   }
 
-  const cardItems: WarehouseCardItem[] = rows.map((row) => ({
-    ...row,
-    photoUrl: photoUrlByItem.get(row.id) ?? null,
-  }));
+  const lastActivityByItem = await fetchLastActivityByItem(ids);
+  // This is a Server Component — it runs once per request on the server,
+  // not repeatedly on the client, so Date.now() here isn't subject to the
+  // client re-render purity concerns the react-hooks/purity rule targets.
+  // eslint-disable-next-line react-hooks/purity
+  const now = Date.now();
+
+  const cardItems: WarehouseCardItem[] = rows.map((row) => {
+    const lastActivity = lastActivityByItem.get(row.id);
+    const daysInStatus =
+      PROCESSING_STATUSES.includes(row.status) && lastActivity
+        ? daysSince(lastActivity, now)
+        : null;
+
+    return {
+      ...row,
+      photoUrl: photoUrlByItem.get(row.id) ?? null,
+      daysInStatus,
+    };
+  });
 
   return (
     <div className="w-full flex-1 bg-[var(--color-bg)]">

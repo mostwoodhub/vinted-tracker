@@ -6,7 +6,7 @@ import { SalesActionBar } from "@/app/SalesActionBar";
 import { defaultPeriodFilter, matchesPeriod, type PeriodFilterState } from "@/lib/period-filter";
 import { formatPln } from "@/lib/format";
 import { INCOME_TAX_RATE } from "@/lib/sales-calc";
-import { computeSalesStatistics, type Breakdown } from "@/lib/sales-stats";
+import { computeSalesStatistics, type Breakdown, type MatchableItem } from "@/lib/sales-stats";
 import { EXPENSE_CATEGORY_ROWS } from "@/lib/expense-categories";
 import type { SaleRow } from "@/lib/sales-types";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
@@ -99,10 +99,12 @@ export function StatisticsView({
   sales,
   expenses,
   profiles,
+  items = [],
 }: {
   sales: SaleRow[];
   expenses: ExpenseRow[];
   profiles: ProfileRow[];
+  items?: MatchableItem[];
 }) {
   const [period, setPeriod] = useState<PeriodFilterState>(defaultPeriodFilter());
 
@@ -117,8 +119,8 @@ export function StatisticsView({
   );
 
   const stats = useMemo(
-    () => computeSalesStatistics(filtered, filteredExpenses, profiles),
-    [filtered, filteredExpenses, profiles]
+    () => computeSalesStatistics(filtered, filteredExpenses, profiles, items),
+    [filtered, filteredExpenses, profiles, items]
   );
 
   return (
@@ -259,6 +261,17 @@ export function StatisticsView({
         <BreakdownTable title="Wg konta" rows={stats.byAccount} />
         <BreakdownTable title="Wg kraju" rows={stats.byCountry} />
         <BreakdownTable title="Wg pracownika (tylko ty widzisz)" rows={stats.byEmployee} />
+
+        <div className="flex flex-col gap-1">
+          <p className={`text-xs ${mutedTextClass}`}>
+            Poniższe trzy rozbicia (marka / rozmiar / partia) łączą sprzedaż z
+            towarem po starym numerze — sprzedaże bez dopasowania trafiają do
+            wiersza „—”.
+          </p>
+        </div>
+        <BreakdownTable title="Wg marki" rows={stats.byBrand} />
+        <BreakdownTable title="Wg rozmiaru" rows={stats.bySize} />
+        <BreakdownTable title="Wg partii" rows={stats.byBatch} />
       </div>
     </div>
   );

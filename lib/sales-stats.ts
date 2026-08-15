@@ -1,5 +1,12 @@
 import type { SaleRow } from "@/lib/sales-types";
 import { categorizeExpenses, type ExpenseCategoryTotals } from "@/lib/expense-categories";
+import {
+  buildItemIndex,
+  matchItemForShoeId,
+  type MatchableItem,
+} from "@/lib/item-sale-match";
+
+export type { MatchableItem };
 
 export type ExpenseRow = {
   category?: string | null;
@@ -33,6 +40,21 @@ export type DailyPoint = {
   profit: number;
   quantity: number;
 };
+
+// Groups sales by an item attribute (brand/size/batch) reached via the
+// best-effort legacy_shoe_id match. Sales that can't be matched to an item
+// fall into the "—" bucket, same as any other missing label.
+export function buildItemLinkedBreakdown(
+  sales: SaleRow[],
+  items: MatchableItem[],
+  keyFn: (item: MatchableItem) => string
+): Breakdown[] {
+  const index = buildItemIndex(items);
+  return buildBreakdown(sales, (sale) => {
+    const item = matchItemForShoeId(sale.legacy_shoe_id, index);
+    return item ? keyFn(item) : "—";
+  });
+}
 
 export function buildDailySeries(sales: SaleRow[]): DailyPoint[] {
   const map = new Map<string, DailyPoint>();
@@ -72,12 +94,16 @@ export type SalesStatistics = {
   byAccount: Breakdown[];
   byCountry: Breakdown[];
   byEmployee: Breakdown[];
+  byBrand: Breakdown[];
+  bySize: Breakdown[];
+  byBatch: Breakdown[];
 };
 
 export function computeSalesStatistics(
   sales: SaleRow[],
   expenses: ExpenseRow[],
-  profiles: ProfileRow[]
+  profiles: ProfileRow[],
+  items: MatchableItem[] = []
 ): SalesStatistics {
   const totalRevenue = sales.reduce((sum, s) => sum + (s.sale_price ?? 0), 0);
   const totalQuantity = sales.reduce((sum, s) => sum + (s.quantity ?? 1), 0);
@@ -127,6 +153,12 @@ export function computeSalesStatistics(
     return profile?.display_name || profile?.email || "Nieznany";
   });
 
+  // Best-effort — only sales whose legacy_shoe_id matches a known item
+  // contribute here; everything else lands in the "—" bucket.
+  const byBrand = buildItemLinkedBreakdown(sales, items, (item) => item.brand ?? "—");
+  const bySize = buildItemLinkedBreakdown(sales, items, (item) => item.size ?? "—");
+  const byBatch = buildItemLinkedBreakdown(sales, items, (item) => item.batchLabel ?? "—");
+
   return {
     count,
     totalRevenue,
@@ -147,5 +179,8 @@ export function computeSalesStatistics(
     byAccount,
     byCountry,
     byEmployee,
+    byBrand,
+    bySize,
+    byBatch,
   };
 }

@@ -11,7 +11,13 @@ import {
   useTransition,
 } from "react";
 import { formatItemNumber } from "@/lib/item-number";
-import { updateItemCostPrice, deleteItems, type UpdateCostState } from "./actions";
+import {
+  updateItemCostPrice,
+  deleteItems,
+  bulkUpdateStatus,
+  bulkUpdatePrice,
+  type UpdateCostState,
+} from "./actions";
 import { inputClass } from "@/lib/ui-classes";
 
 export type WarehouseCardItem = {
@@ -27,9 +33,11 @@ export type WarehouseCardItem = {
   status: string;
   batches: { id: string; label: string | null } | null;
   photoUrl: string | null;
+  daysInStatus?: number | null;
 };
 
 const READY_STATUSES = ["ready_to_publish", "published", "sold"];
+const STALE_THRESHOLD_DAYS = 30;
 
 const STATUS_ORDER = [
   "received",
@@ -235,38 +243,94 @@ function ItemDeleteButton({
   );
 }
 
-function BulkDeleteBar({
+function BulkActionsBar({
   count,
-  onConfirm,
+  onDelete,
   onCancel,
-  pending,
+  onApplyStatus,
+  onApplyPrice,
+  deletePending,
+  statusPending,
+  pricePending,
 }: {
   count: number;
-  onConfirm: () => void;
+  onDelete: () => void;
   onCancel: () => void;
-  pending: boolean;
+  onApplyStatus: (status: string) => void;
+  onApplyPrice: (price: string) => void;
+  deletePending: boolean;
+  statusPending: boolean;
+  pricePending: boolean;
 }) {
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkPrice, setBulkPrice] = useState("");
+  const anyPending = deletePending || statusPending || pricePending;
+
   return (
-    <div className="sticky top-2 z-10 flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-[var(--color-danger-bg)] px-4 py-3">
-      <p className="text-sm font-medium text-[var(--color-danger)]">
-        Zaznaczono: {count}
-      </p>
-      <div className="flex gap-2">
+    <div className="sticky top-2 z-10 flex flex-col gap-3 rounded-[var(--radius-md)] bg-[var(--color-danger-bg)] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium text-[var(--color-danger)]">
+          Zaznaczono: {count}
+        </p>
         <button
           type="button"
           onClick={onCancel}
-          disabled={pending}
+          disabled={anyPending}
           className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
         >
-          Anuluj
+          Anuluj zaznaczenie
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={bulkStatus}
+          onChange={(e) => setBulkStatus(e.target.value)}
+          className={`${inputClass} w-auto text-sm`}
+        >
+          <option value="" disabled>
+            Zmień status na…
+          </option>
+          {STATUS_ORDER.map((s) => (
+            <option key={s} value={s}>
+              {statusMeta(s).label}
+            </option>
+          ))}
+        </select>
         <button
           type="button"
-          onClick={onConfirm}
-          disabled={pending}
-          className="rounded-[var(--radius-sm)] bg-[var(--color-danger-solid,var(--color-danger))] px-3 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          disabled={!bulkStatus || anyPending}
+          onClick={() => onApplyStatus(bulkStatus)}
+          className="rounded-[var(--radius-sm)] bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {pending ? "Usuwanie…" : `🗑️ Usuń zaznaczone (${count})`}
+          {statusPending ? "Zmieniam…" : "Zastosuj status"}
+        </button>
+
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Nowa cena"
+          value={bulkPrice}
+          onChange={(e) => setBulkPrice(e.target.value)}
+          className={`${inputClass} w-28 text-sm`}
+        />
+        <button
+          type="button"
+          disabled={!bulkPrice || anyPending}
+          onClick={() => onApplyPrice(bulkPrice)}
+          className="rounded-[var(--radius-sm)] bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {pricePending ? "Zmieniam…" : "Zastosuj cenę"}
+        </button>
+
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={anyPending}
+          className="ml-auto rounded-[var(--radius-sm)] bg-[var(--color-danger-solid,var(--color-danger))] px-3 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {deletePending ? "Usuwanie…" : `🗑️ Usuń zaznaczone (${count})`}
         </button>
       </div>
     </div>
@@ -316,8 +380,11 @@ export function WarehouseCards({
   const [condition, setCondition] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [search, setSearch] = useState("");
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [deletePending, startDeleteTransition] = useTransition();
+  const [statusPending, startStatusTransition] = useTransition();
+  const [pricePending, startPriceTransition] = useTransition();
 
   const toggleItemSelected = (itemId: string) => {
     setSelectedItems((prev) => {
@@ -343,6 +410,38 @@ export function WarehouseCards({
     });
   }
 
+  function handleBulkStatus(status: string) {
+    const count = selectedItems.size;
+    if (count === 0 || !status) return;
+    if (!confirm(`Zmienić status ${count} towar(ów) na „${statusMeta(status).label}”?`))
+      return;
+    startStatusTransition(async () => {
+      try {
+        await bulkUpdateStatus(Array.from(selectedItems), status);
+        setSelectedItems(new Set());
+        router.refresh();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Nie udało się zmienić statusu");
+      }
+    });
+  }
+
+  function handleBulkPrice(priceRaw: string) {
+    const count = selectedItems.size;
+    const price = Number(priceRaw.replace(",", "."));
+    if (count === 0 || !priceRaw || Number.isNaN(price)) return;
+    if (!confirm(`Ustawić cenę ${price} zł dla ${count} towar(ów)?`)) return;
+    startPriceTransition(async () => {
+      try {
+        await bulkUpdatePrice(Array.from(selectedItems), price);
+        setSelectedItems(new Set());
+        router.refresh();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Nie udało się zmienić ceny");
+      }
+    });
+  }
+
   const toggleSize = (size: string) => {
     setSelectedSizes((prev) => {
       const next = new Set(prev);
@@ -355,6 +454,7 @@ export function WarehouseCards({
   const filtered = useMemo(() => {
     const min = minPrice ? Number(minPrice) : null;
     const max = maxPrice ? Number(maxPrice) : null;
+    const query = search.trim().toLowerCase();
 
     return items.filter((item) => {
       if (statusFilter === "ready") {
@@ -374,6 +474,14 @@ export function WarehouseCards({
         return false;
       if (max !== null && (item.price == null || item.price > max))
         return false;
+      if (query) {
+        const number = formatItemNumber(
+          item.batches?.label,
+          item.internal_number
+        ).toLowerCase();
+        const haystack = `${number} ${item.brand ?? ""} ${item.model ?? ""}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
       return true;
     });
   }, [
@@ -385,6 +493,7 @@ export function WarehouseCards({
     condition,
     minPrice,
     maxPrice,
+    search,
   ]);
 
   const summary = useMemo(() => {
@@ -433,6 +542,17 @@ export function WarehouseCards({
           </button>
         ))}
       </div>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs text-[var(--color-text-muted)]">Szukaj</span>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Numer, marka, model…"
+          className={`${inputClass} max-w-sm`}
+        />
+      </label>
 
       <div className="flex flex-wrap items-end gap-[var(--gap-default)]">
         <label className="flex flex-col gap-1.5">
@@ -568,11 +688,15 @@ export function WarehouseCards({
       </div>
 
       {isAdmin && selectedItems.size > 0 && (
-        <BulkDeleteBar
+        <BulkActionsBar
           count={selectedItems.size}
-          onConfirm={handleBulkDelete}
+          onDelete={handleBulkDelete}
           onCancel={() => setSelectedItems(new Set())}
-          pending={deletePending}
+          onApplyStatus={handleBulkStatus}
+          onApplyPrice={handleBulkPrice}
+          deletePending={deletePending}
+          statusPending={statusPending}
+          pricePending={pricePending}
         />
       )}
 
@@ -621,6 +745,15 @@ export function WarehouseCards({
                   >
                     {meta.label}
                   </span>
+                  {item.daysInStatus != null &&
+                    item.daysInStatus >= STALE_THRESHOLD_DAYS && (
+                      <span
+                        title="Towar długo bez zmiany statusu"
+                        className="rounded-full bg-[var(--color-danger-bg)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-danger)]"
+                      >
+                        ⏳ {item.daysInStatus} dni bez ruchu
+                      </span>
+                    )}
                 </div>
                 <p className="truncate text-sm text-[var(--color-text-muted)]">
                   Rozmiar {item.size ?? "—"} · {item.condition ?? "—"}

@@ -42,6 +42,7 @@ const ADMIN_ONLY_LINKS: NavLink[] = [
   { href: "/accounts", label: "Konta" },
   { href: "/admin/employees", label: "Pracownicy" },
   { href: "/admin/login-log", label: "Historia logowań" },
+  { href: "/admin/trash", label: "Kosz" },
 ];
 
 function getNavLinks(roles: Set<string>): NavLink[] {
