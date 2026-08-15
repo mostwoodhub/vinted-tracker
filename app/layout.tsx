@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
 import "./globals.css";
 import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { logout } from "@/app/login/actions";
 import { ThemeToggle } from "@/app/ThemeToggle";
+import { NavMenu, type NavGroup } from "@/app/NavMenu";
 
 const THEME_INIT_SCRIPT = `
 (function () {
@@ -16,64 +16,55 @@ const THEME_INIT_SCRIPT = `
 })();
 `;
 
-type NavLink = { href: string; label: string };
-
-const ALWAYS_LINKS: NavLink[] = [
-  { href: "/warehouse", label: "Magazyn" },
-  { href: "/pending", label: "Oczekujące" },
-];
-
-const ROLE_LINKS: Record<string, NavLink[]> = {
-  intake: [
-    { href: "/intake", label: "Przyjęcie" },
-    { href: "/warehouse-intake", label: "Przyjęcie (magazyn)" },
-  ],
-  photographer: [{ href: "/photo-queue", label: "Do zdjęć" }],
-  publisher: [{ href: "/drafts", label: "Szkice AI" }],
-};
-
-const ADMIN_ONLY_LINKS: NavLink[] = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/sales", label: "Sprzedaż" },
-  { href: "/expenses", label: "Wydatki" },
-  { href: "/statistics", label: "Statystyki" },
-  { href: "/charts", label: "Wykresy" },
-  { href: "/batches-archive", label: "Partie" },
-  { href: "/accounts", label: "Konta" },
-  { href: "/admin/employees", label: "Pracownicy" },
-  { href: "/admin/login-log", label: "Historia logowań" },
-  { href: "/admin/trash", label: "Kosz" },
-];
-
-function getNavLinks(roles: Set<string>): NavLink[] {
+// Grouped into dropdowns to keep the header from sprawling into a wall of
+// links — order and grouping requested directly by the admin user.
+function getNavGroups(roles: Set<string>): NavGroup[] {
   if (roles.size === 0) return [];
 
-  const links = [...ALWAYS_LINKS];
-  const seen = new Set(links.map((link) => link.href));
+  const isAdmin = roles.has("admin");
+  const groups: NavGroup[] = [];
 
-  const roleLinkGroups = roles.has("admin")
-    ? Object.values(ROLE_LINKS)
-    : [...roles].map((role) => ROLE_LINKS[role] ?? []);
-
-  for (const group of roleLinkGroups) {
-    for (const link of group) {
-      if (!seen.has(link.href)) {
-        seen.add(link.href);
-        links.push(link);
-      }
-    }
+  if (isAdmin) {
+    groups.push({ type: "link", href: "/sales", label: "Sprzedaż" });
+    groups.push({
+      type: "dropdown",
+      label: "Statystyki",
+      links: [
+        { href: "/statistics", label: "Statystyki" },
+        { href: "/charts", label: "Wykresy" },
+      ],
+    });
+    groups.push({ type: "link", href: "/expenses", label: "Wydatki" });
+    groups.push({
+      type: "dropdown",
+      label: "Partie",
+      links: [
+        { href: "/batches-archive", label: "Partie" },
+        { href: "/accounts", label: "Konta" },
+        { href: "/admin/employees", label: "Pracownicy" },
+        { href: "/admin/login-log", label: "Historia logowań" },
+        { href: "/admin/trash", label: "Kosz" },
+      ],
+    });
+    groups.push({ type: "link", href: "/dashboard", label: "Dashboard" });
   }
 
-  if (roles.has("admin")) {
-    for (const link of ADMIN_ONLY_LINKS) {
-      if (!seen.has(link.href)) {
-        seen.add(link.href);
-        links.push(link);
-      }
-    }
+  const magazynLinks = [
+    { href: "/warehouse", label: "Magazyn" },
+    { href: "/pending", label: "Oczekujące" },
+  ];
+  if (isAdmin || roles.has("intake")) {
+    magazynLinks.push({ href: "/intake", label: "Przyjęcie" });
   }
+  if (isAdmin || roles.has("photographer")) {
+    magazynLinks.push({ href: "/photo-queue", label: "Do zdjęć" });
+  }
+  if (isAdmin || roles.has("publisher")) {
+    magazynLinks.push({ href: "/drafts", label: "Szkice AI" });
+  }
+  groups.push({ type: "dropdown", label: "Magazyn", links: magazynLinks });
 
-  return links;
+  return groups;
 }
 
 const geistSans = Geist({
@@ -94,7 +85,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const employee = await getCurrentEmployee();
   const roles = getEffectiveRoles(employee);
-  const navLinks = getNavLinks(roles);
+  const navGroups = getNavGroups(roles);
 
   return (
     <html
@@ -109,15 +100,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         {employee && (
           <header className="bg-[var(--color-surface)]">
             <nav className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-6 py-3 text-sm">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="font-medium text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
-                >
-                  {link.label}
-                </Link>
-              ))}
+              <NavMenu groups={navGroups} />
               <div className="ml-auto flex items-center gap-3">
                 <ThemeToggle />
                 <span className="text-xs text-[var(--color-text-muted)]">

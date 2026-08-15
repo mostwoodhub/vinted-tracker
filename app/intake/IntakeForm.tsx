@@ -96,7 +96,6 @@ type IntakeFormProps = {
   sizes: string[];
   batchLabels: string[];
   heading?: string;
-  showLegacyNumberField?: boolean;
 };
 
 export function IntakeForm({
@@ -104,12 +103,14 @@ export function IntakeForm({
   sizes,
   batchLabels,
   heading = "Przyjęcie towaru",
-  showLegacyNumberField = false,
 }: IntakeFormProps) {
   const [state, formAction] = useActionState(createItem, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const confirmDuplicateRef = useRef<HTMLInputElement>(null);
   const [condition, setCondition] = useState("");
+  // Was a separate "Przyjęcie (magazyn)" page/form before — merged into one,
+  // since the only real difference was whether the old-number field showed.
+  const [isLegacyItem, setIsLegacyItem] = useState(false);
 
   function handleAddAnyway() {
     if (confirmDuplicateRef.current) confirmDuplicateRef.current.value = "true";
@@ -117,14 +118,15 @@ export function IntakeForm({
   }
 
   useEffect(() => {
-    // Resets the form ref and local `condition` state after a successful
-    // submission. Kept as an effect (rather than the render-time
+    // Resets the form ref and local `condition`/`isLegacyItem` state after a
+    // successful submission. Kept as an effect (rather than the render-time
     // previous-state pattern) because it touches formRef.current, and refs
     // must not be read or written during render.
     if (state.status === "success") {
       formRef.current?.reset();
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCondition("");
+      setIsLegacyItem(false);
     }
   }, [state]);
 
@@ -211,7 +213,17 @@ export function IntakeForm({
           </datalist>
         </div>
 
-        {showLegacyNumberField && (
+        <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+          <input
+            type="checkbox"
+            checked={isLegacyItem}
+            onChange={(e) => setIsLegacyItem(e.target.checked)}
+            className={checkboxClass}
+          />
+          To stary towar (ma stary numer z poprzedniego systemu)
+        </label>
+
+        {isLegacyItem && (
           <div className="flex flex-col gap-1.5">
             <label htmlFor="legacyNumber" className={labelClass}>
               Stary numer
