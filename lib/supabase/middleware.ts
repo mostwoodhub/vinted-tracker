@@ -42,9 +42,15 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && request.nextUrl.pathname === "/login") {
+  if (
+    user &&
+    (request.nextUrl.pathname === "/login" || request.nextUrl.pathname === "/")
+  ) {
+    // Home page is Sprzedaż — also covers "/" directly (no app/page.tsx
+    // exists, so without this an authenticated visit to the bare domain
+    // would 404 instead of landing anywhere useful).
     const url = request.nextUrl.clone();
-    url.pathname = "/warehouse";
+    url.pathname = "/sales";
     return NextResponse.redirect(url);
   }
 

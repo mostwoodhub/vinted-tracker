@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "Vinted Tracker",
     description:
       "Magazyn, sprzedaż i ogłoszenia (Vinted, Allegro, OLX) w jednym miejscu.",
-    start_url: "/warehouse",
+    start_url: "/sales",
     display: "standalone",
     background_color: "#f5f5f7",
     theme_color: "#7c5cff",
