@@ -10,7 +10,7 @@ export type NavGroup =
   | { type: "dropdown"; label: string; links: NavLink[] };
 
 const linkClass =
-  "font-medium text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]";
+  "font-bold text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]";
 
 function NavDropdown({ label, links }: { label: string; links: NavLink[] }) {
   const [open, setOpen] = useState(false);
@@ -44,7 +44,7 @@ function NavDropdown({ label, links }: { label: string; links: NavLink[] }) {
               key={link.href}
               href={link.href}
               onClick={() => setOpen(false)}
-              className="rounded-[var(--radius-sm)] px-3 py-2 text-sm font-medium text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg)] hover:text-[var(--color-text)]"
+              className="rounded-[var(--radius-sm)] px-3 py-2 text-sm font-bold text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg)] hover:text-[var(--color-text)]"
             >
               {link.label}
             </Link>
