@@ -147,8 +147,11 @@ export function SalesView({
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
+    // A number search means "find this specific sale anywhere" — the date
+    // period filter shouldn't hide it just because it happened outside
+    // today/this month. Only apply the period filter when not searching.
     return sales.filter((sale) => {
-      if (!matchesPeriod(sale.sale_date, period)) return false;
+      if (!query && !matchesPeriod(sale.sale_date, period)) return false;
       if (unconfirmedOnly && sale.confirmed !== false) return false;
       if (query && !(sale.legacy_shoe_id ?? "").toLowerCase().includes(query)) {
         return false;
@@ -192,6 +195,11 @@ export function SalesView({
                 placeholder="np. P15930"
                 className={inputClass}
               />
+              {search.trim() && (
+                <span className={`text-xs ${mutedTextClass}`}>
+                  Szukam we wszystkich datach, nie tylko w wybranym okresie.
+                </span>
+              )}
             </label>
 
             <label className="flex items-center gap-2 pb-2.5 text-sm text-[var(--color-text)]">
