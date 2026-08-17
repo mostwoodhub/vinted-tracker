@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "@/lib/anthropic";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getBrandSalesHistory } from "@/lib/sales-history";
+import { downloadPhotoAsBase64 } from "@/lib/item-photo-download";
 import { formatPln } from "@/lib/format";
 
 const PLATFORM_LIMITS = {
@@ -24,25 +25,10 @@ type ListingResult = {
   olx: ListingCopy;
 };
 
-async function downloadPhotoAsBase64(path: string) {
-  const { data, error } = await supabaseAdmin.storage
-    .from("item-photos")
-    .download(path);
-
-  if (error || !data) {
-    throw error ?? new Error(`Nie udało się pobrać zdjęcia: ${path}`);
-  }
-
-  const buffer = Buffer.from(await data.arrayBuffer());
-  const mediaType = data.type || "image/jpeg";
-
-  return { mediaType, base64: buffer.toString("base64") };
-}
-
 export async function generateAiCard(itemId: string) {
   const { data: item } = await supabaseAdmin
     .from("items")
-    .select("brand, size, condition, condition_detail, defects, price")
+    .select("brand, size, condition, condition_detail, defects, price, ai_suggested_price")
     .eq("id", itemId)
     .single();
 
@@ -178,6 +164,21 @@ Odpowiedz wyłącznie przez wywołanie narzędzia submit_listing_data.`;
   const result = toolUse.input as ListingResult;
   const platforms: PlatformKey[] = ["vinted", "allegro", "olx"];
 
+  // This is the thorough, pre-publish re-check — compares against the quick
+  // estimate made at intake time (from working photos, see
+  // lib/ai-price-estimate.ts) and calls out the change instead of silently
+  // overwriting it, so the employee notices the revision.
+  let priceReasoning = result.priceReasoning ?? null;
+  const priorEstimate = item.ai_suggested_price;
+  if (
+    priorEstimate != null &&
+    result.suggestedPrice != null &&
+    Math.abs(result.suggestedPrice - priorEstimate) / priorEstimate > 0.1
+  ) {
+    const note = `Zmieniono wobec wstępnej wyceny z przyjęcia (${formatPln(priorEstimate)} → ${formatPln(result.suggestedPrice)}).`;
+    priceReasoning = priceReasoning ? `${note} ${priceReasoning}` : note;
+  }
+
   for (const platform of platforms) {
     const listing = result[platform];
     const limits = PLATFORM_LIMITS[platform];
@@ -198,7 +199,7 @@ Odpowiedz wyłącznie przez wywołanie narzędzia submit_listing_data.`;
       status: "ai_card_ready",
       model: result.model,
       ai_suggested_price: result.suggestedPrice ?? null,
-      ai_price_reasoning: result.priceReasoning ?? null,
+      ai_price_reasoning: priceReasoning,
     })
     .eq("id", itemId);
 

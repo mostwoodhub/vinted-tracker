@@ -1,11 +1,13 @@
 "use server";
 
 import { randomUUID } from "crypto";
+import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
 import { resolveBatchId } from "@/lib/batches";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
 import { formatItemNumber } from "@/lib/item-number";
+import { generateIntakeEstimate } from "@/lib/ai-price-estimate";
 
 export type IntakeState = {
   status: "idle" | "success" | "error" | "duplicate";
@@ -156,6 +158,18 @@ export async function createItem(
       if (photoRowError) {
         return { status: "error", error: photoRowError.message };
       }
+    }
+
+    // Fire-and-forget quick AI price/model estimate off the working
+    // photo(s) just uploaded — never blocks the intake form response.
+    if (photos.length > 0) {
+      after(async () => {
+        try {
+          await generateIntakeEstimate(item.id);
+        } catch (err) {
+          console.error("Wstępna wycena AI nie powiodła się", err);
+        }
+      });
     }
 
     return {
