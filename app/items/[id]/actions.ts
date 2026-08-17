@@ -311,6 +311,33 @@ export async function deleteItem(itemId: string) {
   revalidatePath("/warehouse");
 }
 
+// Copies the AI's suggested price (based on model/condition + this shop's
+// own sales history for the brand — see lib/sales-history.ts) straight into
+// the item's actual price field, one click instead of retyping it.
+export async function applyAiSuggestedPrice(itemId: string) {
+  const access = await checkRole("admin", "publisher");
+  if (!access.ok) throw new Error(access.error);
+
+  const { data: item, error: fetchError } = await supabaseAdmin
+    .from("items")
+    .select("ai_suggested_price")
+    .eq("id", itemId)
+    .single();
+
+  if (fetchError) throw new Error(fetchError.message);
+  if (item?.ai_suggested_price == null) throw new Error("Brak sugerowanej ceny AI");
+
+  const { error } = await supabaseAdmin
+    .from("items")
+    .update({ price: item.ai_suggested_price })
+    .eq("id", itemId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/items/${itemId}`);
+  revalidatePath("/warehouse");
+}
+
 export type RetryAiCardState = {
   status: "idle" | "success" | "error";
   error?: string;

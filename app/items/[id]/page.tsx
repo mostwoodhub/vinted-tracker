@@ -10,6 +10,7 @@ import { EditItemForm } from "./EditItemForm";
 import { DeleteItemButton } from "./DeleteItemButton";
 import { DownloadPhotoButton } from "@/app/DownloadPhotoButton";
 import { RetryAiCardButton } from "./RetryAiCardButton";
+import { ApplyAiPriceButton } from "./ApplyAiPriceButton";
 import { ReturnItemForm } from "./ReturnItemForm";
 import { ListingsEditor, PLATFORM_LABELS } from "@/app/drafts/ListingsEditor";
 import { mapListingsForEditor } from "@/lib/listing-publications";
@@ -270,6 +271,22 @@ export default async function ItemPage({
             label="Cena"
             value={item.price != null ? `${item.price} zł` : "—"}
           />
+          {item.ai_suggested_price != null && (
+            <Field
+              label="Sugerowana cena AI"
+              value={
+                <div className="flex flex-col gap-1">
+                  <span>{formatPln(item.ai_suggested_price)}</span>
+                  {item.ai_price_reasoning && (
+                    <span className={`text-xs font-normal ${mutedTextClass}`}>
+                      {item.ai_price_reasoning}
+                    </span>
+                  )}
+                  <ApplyAiPriceButton itemId={item.id} />
+                </div>
+              }
+            />
+          )}
         </dl>
 
         <div className="grid grid-cols-1 gap-[var(--space-xl)] sm:grid-cols-2">

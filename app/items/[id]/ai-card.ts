@@ -2,6 +2,8 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "@/lib/anthropic";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getBrandSalesHistory } from "@/lib/sales-history";
+import { formatPln } from "@/lib/format";
 
 const PLATFORM_LIMITS = {
   vinted: { title: 70, description: 1000 },
@@ -15,6 +17,8 @@ type ListingCopy = { title: string; description: string };
 
 type ListingResult = {
   model: string;
+  suggestedPrice?: number;
+  priceReasoning?: string;
   vinted: ListingCopy;
   allegro: ListingCopy;
   olx: ListingCopy;
@@ -62,17 +66,31 @@ export async function generateAiCard(itemId: string) {
     ? item.defects.join(", ")
     : "brak wad";
 
+  // Own historical data: what this shop actually sold this brand for in the
+  // past (real sale_price from confirmed sales), not a generic market guess.
+  // This is what closes the loop from "sold" back into future AI pricing.
+  const history = await getBrandSalesHistory(item.brand);
+  const historyText = history
+    ? `Historia sprzedaży tej marki w naszym sklepie: ${history.count} sprzedanych par, średnia cena ${formatPln(history.avgPrice)} (zakres ${formatPln(history.minPrice)}–${formatPln(history.maxPrice)}). Ostatnie ceny sprzedaży: ${history.recent
+        .map((r) => formatPln(r.price))
+        .join(", ")}.`
+    : "Brak historii sprzedaży tej marki w naszym sklepie — brak własnych danych porównawczych.";
+
   const promptText = `Jesteś ekspertem od sprzedaży używanych butów na polskich platformach ogłoszeniowych.
 Na podstawie zdjęć oraz poniższych danych:
 - Marka: ${item.brand ?? "nieznana"}
 - Rozmiar: ${item.size ?? "nieznany"}
 - Stan: ${item.condition ?? "nieznany"}${item.condition_detail ? ` (${item.condition_detail})` : ""}
 - Wady: ${defectsText}
+- Aktualna cena wpisana przy przyjęciu: ${item.price != null ? formatPln(item.price) : "nie wpisano"}
+- ${historyText}
 
 Zidentyfikuj dokładny model butów na podstawie zdjęć, a następnie wygeneruj tytuł i opis ogłoszenia osobno dla trzech platform, ściśle przestrzegając limitów znaków:
 - Vinted: tytuł do ${PLATFORM_LIMITS.vinted.title} znaków, opis do ${PLATFORM_LIMITS.vinted.description} znaków
 - Allegro: tytuł do ${PLATFORM_LIMITS.allegro.title} znaków, opis do ${PLATFORM_LIMITS.allegro.description} znaków
 - OLX: tytuł do ${PLATFORM_LIMITS.olx.title} znaków, opis do ${PLATFORM_LIMITS.olx.description} znaków
+
+Dodatkowo, na podstawie modelu, stanu, wad oraz historii sprzedaży tej marki, zaproponuj rozsądną cenę sprzedaży (suggestedPrice, w złotych) i krótko uzasadnij (priceReasoning, 1-2 zdania). Jeśli brak historii, oprzyj się na ogólnej wiedzy o wartości rynkowej tego modelu.
 
 Odpowiedz wyłącznie przez wywołanie narzędzia submit_listing_data.`;
 
@@ -91,6 +109,14 @@ Odpowiedz wyłącznie przez wywołanie narzędzia submit_listing_data.`;
             model: {
               type: "string",
               description: "Rozpoznany model butów",
+            },
+            suggestedPrice: {
+              type: "number",
+              description: "Sugerowana cena sprzedaży w złotych",
+            },
+            priceReasoning: {
+              type: "string",
+              description: "Krótkie uzasadnienie sugerowanej ceny",
             },
             vinted: {
               type: "object",
@@ -168,7 +194,12 @@ Odpowiedz wyłącznie przez wywołanie narzędzia submit_listing_data.`;
 
   await supabaseAdmin
     .from("items")
-    .update({ status: "ai_card_ready", model: result.model })
+    .update({
+      status: "ai_card_ready",
+      model: result.model,
+      ai_suggested_price: result.suggestedPrice ?? null,
+      ai_price_reasoning: result.priceReasoning ?? null,
+    })
     .eq("id", itemId);
 
   await supabaseAdmin.from("item_status_log").insert({
