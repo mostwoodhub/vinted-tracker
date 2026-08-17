@@ -35,6 +35,19 @@ export function getEffectiveRoles(employee: Employee | null): Set<string> {
   return new Set([employee.role, ...(employee.extra_roles ?? [])]);
 }
 
+// Employees whose only job is intaking stock don't need the full warehouse
+// browser (Magazyn/Oczekujące show prices and every item) — just a way to
+// add items. Anyone who also holds another role still sees the full nav,
+// since e.g. an intake+photographer combo genuinely needs both.
+export function isIntakeOnly(roles: Set<string>): boolean {
+  return (
+    roles.has("intake") &&
+    !roles.has("admin") &&
+    !roles.has("photographer") &&
+    !roles.has("publisher")
+  );
+}
+
 export type RoleCheckResult =
   | { ok: true; employee: Employee }
   | { ok: false; error: string };

@@ -1,5 +1,6 @@
+import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
+import { getCurrentEmployee, getEffectiveRoles, isIntakeOnly } from "@/lib/auth";
 import {
   fetchLastActivityByItem,
   daysSince,
@@ -9,7 +10,9 @@ import { WarehouseCards, type WarehouseCardItem } from "./WarehouseCards";
 
 export default async function WarehousePage() {
   const employee = await getCurrentEmployee();
-  const isAdmin = getEffectiveRoles(employee).has("admin");
+  const roles = getEffectiveRoles(employee);
+  if (isIntakeOnly(roles)) redirect("/intake");
+  const isAdmin = roles.has("admin");
 
   const { data: items } = await supabaseAdmin
     .from("items")

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
+import { getCurrentEmployee, getEffectiveRoles, isIntakeOnly } from "@/lib/auth";
 import { logout } from "@/app/login/actions";
 import { ThemeToggle } from "@/app/ThemeToggle";
 import { NavMenu, type NavGroup } from "@/app/NavMenu";
@@ -23,6 +23,13 @@ function getNavGroups(roles: Set<string>): NavGroup[] {
 
   const isAdmin = roles.has("admin");
   const groups: NavGroup[] = [];
+
+  // Pure intake employees only add stock — they don't need the full
+  // warehouse browser (prices, every item, pending queue), just this.
+  if (isIntakeOnly(roles)) {
+    groups.push({ type: "link", href: "/intake", label: "Przyjęcie" });
+    return groups;
+  }
 
   if (isAdmin) {
     groups.push({ type: "link", href: "/sales", label: "Sprzedaż" });

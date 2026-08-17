@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
+import { getCurrentEmployee, getEffectiveRoles, isIntakeOnly } from "@/lib/auth";
 import { fetchAllRows } from "@/lib/fetch-all";
 import type { SaleRow } from "@/lib/sales-types";
 import { SalesView, type ExpenseRow, type ProfileRow } from "./SalesView";
@@ -10,7 +10,7 @@ export default async function SalesPage() {
   const roles = getEffectiveRoles(employee);
 
   if (!roles.has("admin")) {
-    redirect("/warehouse");
+    redirect(isIntakeOnly(roles) ? "/intake" : "/warehouse");
   }
 
   const sales = await fetchAllRows<SaleRow>((from, to) =>
