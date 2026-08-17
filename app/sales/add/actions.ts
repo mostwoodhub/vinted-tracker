@@ -2,11 +2,14 @@
 
 import { randomUUID } from "crypto";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { ALL_ROLES, checkRole, getEffectiveRoles } from "@/lib/auth";
 import { parseSaleFormFields } from "@/lib/sales-form-parse";
 import { uploadSaleFile, uploadSalePhotos } from "@/lib/sales-upload";
 import { markItemSoldByShoeId } from "@/lib/item-sale-link";
+import { sendTelegramMessage } from "@/lib/telegram";
+import { formatPln } from "@/lib/format";
 
 export type AddSaleState = {
   status: "idle" | "error";
@@ -93,6 +96,22 @@ export async function createSale(
   } else {
     await markItemSoldByShoeId(parsed.legacyShoeId);
   }
+
+  after(async () => {
+    const shoeIds = parsed.items?.length
+      ? parsed.items.map((i) => i.shoeId).filter(Boolean).join(", ")
+      : parsed.legacyShoeId;
+    const lines = [
+      "🛍 <b>Nowa sprzedaż</b>",
+      `Platforma: ${parsed.platform}`,
+      parsed.brand ? `Marka: ${parsed.brand}` : null,
+      shoeIds ? `Numer: ${shoeIds}` : null,
+      `Cena: ${formatPln(parsed.salePrice)}`,
+      parsed.accountName ? `Konto: ${parsed.accountName}` : null,
+      !confirmed ? "⏳ Czeka na zatwierdzenie" : null,
+    ].filter(Boolean);
+    await sendTelegramMessage(lines.join("\n"));
+  });
 
   redirect("/sales");
 }

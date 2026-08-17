@@ -69,12 +69,25 @@ function printLabel(state: IntakeState) {
   <head>
     <title>Etykieta ${displayNumber}</title>
     <style>
-      @page { size: 80mm 50mm; margin: 4mm; }
-      body { font-family: Arial, sans-serif; margin: 0; }
-      .number { font-size: 28px; font-weight: 700; }
+      /* Fizyczna etykieta na taśmie 40x20mm — nie mylić z etykietą
+         wysyłkową (PDF) drukowaną przy sprzedaży, to zupełnie inny druk. */
+      @page { size: 40mm 20mm; margin: 1mm; }
+      * { box-sizing: border-box; }
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        width: 38mm;
+        height: 18mm;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.5mm;
+      }
+      .number { font-size: 16px; font-weight: 700; line-height: 1.1; }
       .line {
-        font-size: 13px;
-        margin-top: 4px;
+        font-size: 8px;
+        line-height: 1.2;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
