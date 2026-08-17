@@ -91,36 +91,65 @@ export default async function BatchesArchivePage() {
           )}
 
           <div className="flex flex-col gap-[var(--gap-default)]">
-            {batches.map((batch) => (
-              <div
-                key={batch.name}
-                className={`flex items-center gap-[var(--space-md)] ${cardClass}`}
-              >
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="font-bold text-[var(--color-text)]">
-                    📦 {batch.name}
-                  </span>
-                  <p className={`truncate text-sm ${mutedTextClass}`}>
-                    Koszt {formatPln(batch.cost)} · Przychód netto{" "}
-                    {formatPln(batch.netRevenue)} · {batch.saleCount}{" "}
-                    {batch.saleCount === 1 ? "sprzedaż" : "sprzedaży"}
-                  </p>
+            {batches.map((batch) => {
+              const recoveredPct =
+                batch.cost > 0
+                  ? Math.round(Math.min(1, batch.netRevenue / batch.cost) * 100)
+                  : batch.netRevenue > 0
+                    ? 100
+                    : 0;
+
+              return (
+                <div key={batch.name} className={`flex flex-col gap-3 ${cardClass}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-bold text-[var(--color-text)]">
+                      📦 Partia {batch.name}
+                    </span>
+                    <span className={`shrink-0 text-sm ${mutedTextClass}`}>
+                      {batch.saleCount} {batch.saleCount === 1 ? "sprzedaż" : "sprzedaży"}
+                    </span>
+                  </div>
+
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]">
+                    <div
+                      className="h-full rounded-full bg-[var(--color-accent)]"
+                      style={{ width: `${recoveredPct}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className={`text-xs ${mutedTextClass}`}>Koszt partii</p>
+                      <p className="font-semibold text-[var(--color-warning)]">
+                        {formatPln(batch.cost)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-xs ${mutedTextClass}`}>Przychód netto</p>
+                      <p className="font-semibold text-[var(--color-success)]">
+                        {formatPln(batch.netRevenue)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-[var(--color-border)] pt-2">
+                    <p className={`text-xs ${mutedTextClass}`}>
+                      {batch.breakEvenReached ? "Zysk ponad koszt" : "Pozostało do spłaty"}
+                    </p>
+                    <p
+                      className={`text-lg font-bold ${
+                        batch.breakEvenReached
+                          ? "text-[var(--color-success)]"
+                          : "text-[var(--color-danger)]"
+                      }`}
+                    >
+                      {batch.breakEvenReached ? "+" : "-"}
+                      {formatPln(batch.remaining)}
+                    </p>
+                  </div>
                 </div>
-                <div className="shrink-0 text-right">
-                  <p
-                    className={`text-sm font-semibold ${
-                      batch.breakEvenReached
-                        ? "text-[var(--color-success)]"
-                        : "text-[var(--color-warning)]"
-                    }`}
-                  >
-                    {batch.breakEvenReached
-                      ? `Próg osiągnięty (+${formatPln(batch.remaining)})`
-                      : `Pozostało ${formatPln(batch.remaining)}`}
-                  </p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
