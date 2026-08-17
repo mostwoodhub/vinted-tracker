@@ -274,7 +274,12 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
   // bigger: what was declared bought, or how many items actually got added
   // (covers the case items were added without ever setting quantity).
   const total = Math.max(batch.quantity ?? 0, batch.itemCount);
-  const remaining = Math.max(0, total - batch.soldCount);
+  // Same idea for "sold": real item statuses win when items are actually
+  // tracked in the system, otherwise fall back to the manually entered
+  // count (the spreadsheet-imported batches have no items in the system at
+  // all, so soldCount would otherwise always show 0 for them).
+  const effectiveSold = Math.max(batch.soldCount, batch.soldPairs ?? 0);
+  const remaining = Math.max(0, total - effectiveSold);
 
   // Same "progress toward break-even" visual as the old app / the legacy
   // prefix-matched Partie obuwia section below — here it runs off the
@@ -356,17 +361,16 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
 
       <div className="flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-2">
         <p className={`truncate text-sm ${mutedTextClass}`}>
-          {batch.purchaseLocation ? `${batch.purchaseLocation} · ` : ""}
-          {batch.quantity != null ? `zakupiono: ${batch.quantity} · ` : ""}
-          dodano do systemu: {batch.itemCount}
-          {batch.soldPairs != null ? ` · sprzedano (ręcznie): ${batch.soldPairs}` : ""}
+          {batch.purchaseLocation ?? ""}
+          {batch.purchaseLocation && batch.quantity != null ? " · " : ""}
+          {batch.quantity != null ? `zakupiono: ${batch.quantity}` : ""}
         </p>
         <div className="shrink-0 text-right">
           <p className="text-sm font-semibold text-[var(--color-text)]">
             Zostało {remaining} {remaining === 1 ? "para" : "par"}
           </p>
           <p className={`text-xs ${mutedTextClass}`}>
-            Sprzedano {batch.soldCount} z {total}
+            Sprzedano {effectiveSold} z {total}
           </p>
         </div>
       </div>
