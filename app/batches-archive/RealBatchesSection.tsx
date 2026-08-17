@@ -30,6 +30,8 @@ export type RealBatchRow = {
   purchaseCost: number | null;
   purchaseLocation: string | null;
   quantity: number | null;
+  salesAmount: number | null;
+  soldPairs: number | null;
   itemCount: number;
   soldCount: number;
 };
@@ -102,6 +104,26 @@ function CreateBatchForm() {
         <span className={labelClass}>Ilość (informacyjnie)</span>
         <input
           name="quantity"
+          type="number"
+          step="1"
+          min="0"
+          className={`${inputClass} max-w-xs`}
+        />
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <span className={labelClass}>Sprzedaż razem (informacyjnie)</span>
+        <input
+          name="salesAmount"
+          type="number"
+          step="0.01"
+          min="0"
+          className={`${inputClass} max-w-xs`}
+        />
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <span className={labelClass}>Sprzedano par (informacyjnie)</span>
+        <input
+          name="soldPairs"
           type="number"
           step="1"
           min="0"
@@ -210,6 +232,28 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
             className={`${inputClass} max-w-xs`}
           />
         </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Sprzedaż razem (informacyjnie)</span>
+          <input
+            name="salesAmount"
+            type="number"
+            step="0.01"
+            min="0"
+            defaultValue={batch.salesAmount ?? ""}
+            className={`${inputClass} max-w-xs`}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Sprzedano par (informacyjnie)</span>
+          <input
+            name="soldPairs"
+            type="number"
+            step="1"
+            min="0"
+            defaultValue={batch.soldPairs ?? ""}
+            className={`${inputClass} max-w-xs`}
+          />
+        </label>
         {saveState.status === "error" && (
           <p className={errorTextClass} role="alert">
             {saveState.error}
@@ -245,6 +289,12 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
           {" · dodano do systemu: "}
           {batch.itemCount}
         </p>
+        {(batch.salesAmount != null || batch.soldPairs != null) && (
+          <p className={`truncate text-xs ${mutedTextClass}`}>
+            Sprzedaż (ręcznie wpisana): {formatPln(batch.salesAmount)}
+            {batch.soldPairs != null ? ` · ${batch.soldPairs} par` : ""}
+          </p>
+        )}
       </div>
       <div className="shrink-0 text-right">
         <p className="text-sm font-semibold text-[var(--color-text)]">

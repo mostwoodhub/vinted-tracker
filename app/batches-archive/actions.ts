@@ -50,6 +50,24 @@ export async function createBatch(
     }
   }
 
+  const salesAmountRaw = String(formData.get("salesAmount") ?? "").trim();
+  let salesAmount: number | null = null;
+  if (salesAmountRaw) {
+    salesAmount = Number(salesAmountRaw.replace(",", "."));
+    if (Number.isNaN(salesAmount)) {
+      return { status: "error", error: "Nieprawidłowa kwota sprzedaży" };
+    }
+  }
+
+  const soldPairsRaw = String(formData.get("soldPairs") ?? "").trim();
+  let soldPairs: number | null = null;
+  if (soldPairsRaw) {
+    soldPairs = Number(soldPairsRaw);
+    if (!Number.isInteger(soldPairs) || soldPairs < 0) {
+      return { status: "error", error: "Nieprawidłowa liczba sprzedanych par" };
+    }
+  }
+
   let batchId: string;
   try {
     const nextBatchNumber = await getNextBatchNumber();
@@ -61,6 +79,8 @@ export async function createBatch(
         purchase_cost: purchaseCost,
         purchase_location: purchaseLocation || null,
         quantity,
+        sales_amount: salesAmount,
+        sold_pairs: soldPairs,
       })
       .select("id")
       .single();

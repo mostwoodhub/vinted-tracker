@@ -40,7 +40,9 @@ export default async function BatchesArchivePage() {
 
   const { data: realBatchesRaw } = await supabaseAdmin
     .from("batches")
-    .select("id, label, batch_number, purchase_cost, purchase_location, quantity")
+    .select(
+      "id, label, batch_number, purchase_cost, purchase_location, quantity, sales_amount, sold_pairs"
+    )
     .order("batch_number", { ascending: true });
 
   const { data: itemBatchLinks } = await supabaseAdmin
@@ -66,6 +68,8 @@ export default async function BatchesArchivePage() {
     purchaseCost: b.purchase_cost,
     purchaseLocation: b.purchase_location,
     quantity: b.quantity,
+    salesAmount: b.sales_amount,
+    soldPairs: b.sold_pairs,
     itemCount: itemCountByBatch.get(b.id) ?? 0,
     soldCount: soldCountByBatch.get(b.id) ?? 0,
   }));

@@ -14,7 +14,9 @@ export default async function BatchPage({
 
   const { data: batch } = await supabaseAdmin
     .from("batches")
-    .select("id, label, batch_number, purchase_cost, purchase_location, quantity")
+    .select(
+      "id, label, batch_number, purchase_cost, purchase_location, quantity, sales_amount, sold_pairs"
+    )
     .eq("id", id)
     .single();
 
@@ -44,6 +46,8 @@ export default async function BatchPage({
           purchaseCost={batch.purchase_cost}
           purchaseLocation={batch.purchase_location}
           quantity={batch.quantity}
+          salesAmount={batch.sales_amount}
+          soldPairs={batch.sold_pairs}
           itemCount={rows.length}
           soldCount={soldCount}
           unpricedCount={unpricedCount}

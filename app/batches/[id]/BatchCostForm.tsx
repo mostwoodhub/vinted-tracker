@@ -57,6 +57,8 @@ export function BatchCostForm({
   purchaseCost,
   purchaseLocation,
   quantity,
+  salesAmount,
+  soldPairs,
   itemCount,
   soldCount,
   unpricedCount,
@@ -66,6 +68,8 @@ export function BatchCostForm({
   purchaseCost: number | null;
   purchaseLocation: string | null;
   quantity: number | null;
+  salesAmount: number | null;
+  soldPairs: number | null;
   itemCount: number;
   soldCount: number;
   unpricedCount: number;
@@ -131,6 +135,28 @@ export function BatchCostForm({
             step="1"
             min="0"
             defaultValue={quantity ?? ""}
+            className={`${inputClass} max-w-xs`}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Sprzedaż razem (informacyjnie)</span>
+          <input
+            name="salesAmount"
+            type="number"
+            step="0.01"
+            min="0"
+            defaultValue={salesAmount ?? ""}
+            className={`${inputClass} max-w-xs`}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Sprzedano par (informacyjnie)</span>
+          <input
+            name="soldPairs"
+            type="number"
+            step="1"
+            min="0"
+            defaultValue={soldPairs ?? ""}
             className={`${inputClass} max-w-xs`}
           />
         </label>

@@ -40,6 +40,24 @@ export async function updateBatchPurchaseCost(
     }
   }
 
+  const salesAmountRaw = String(formData.get("salesAmount") ?? "").trim();
+  let salesAmount: number | null = null;
+  if (salesAmountRaw) {
+    salesAmount = Number(salesAmountRaw.replace(",", "."));
+    if (Number.isNaN(salesAmount)) {
+      return { status: "error", error: "Nieprawidłowa kwota sprzedaży" };
+    }
+  }
+
+  const soldPairsRaw = String(formData.get("soldPairs") ?? "").trim();
+  let soldPairs: number | null = null;
+  if (soldPairsRaw) {
+    soldPairs = Number(soldPairsRaw);
+    if (!Number.isInteger(soldPairs) || soldPairs < 0) {
+      return { status: "error", error: "Nieprawidłowa liczba sprzedanych par" };
+    }
+  }
+
   const { error } = await supabaseAdmin
     .from("batches")
     .update({
@@ -47,6 +65,8 @@ export async function updateBatchPurchaseCost(
       purchase_cost: purchaseCost,
       purchase_location: purchaseLocation || null,
       quantity,
+      sales_amount: salesAmount,
+      sold_pairs: soldPairs,
     })
     .eq("id", batchId);
 
