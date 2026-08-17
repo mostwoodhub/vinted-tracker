@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { createItem, type IntakeState } from "./actions";
 import { FileDropzone } from "@/app/FileDropzone";
 import { formatItemNumber } from "@/lib/item-number";
+import { parseShoeId } from "@/lib/item-sale-match";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
 import {
   buttonPrimaryClass,
@@ -96,6 +97,7 @@ type IntakeFormProps = {
   sizes: string[];
   batchLabels: string[];
   heading?: string;
+  suggestedLegacyNumber?: string | null;
 };
 
 export function IntakeForm({
@@ -103,6 +105,7 @@ export function IntakeForm({
   sizes,
   batchLabels,
   heading = "Przyjęcie towaru",
+  suggestedLegacyNumber = null,
 }: IntakeFormProps) {
   const [state, formAction] = useActionState(createItem, initialState);
   const formRef = useRef<HTMLFormElement>(null);
@@ -111,6 +114,19 @@ export function IntakeForm({
   // Was a separate "Przyjęcie (magazyn)" page/form before — merged into one,
   // since the only real difference was whether the old-number field showed.
   const [isLegacyItem, setIsLegacyItem] = useState(false);
+  const [legacyNumber, setLegacyNumber] = useState("");
+  // Starts from the server-computed guess (based on the last 10 old numbers
+  // typed in); bumped by one locally after each save so a whole batch of
+  // sequential items can be entered without retyping the number pattern
+  // every time or waiting on a fresh page load.
+  const [nextSuggestion, setNextSuggestion] = useState(suggestedLegacyNumber);
+
+  function handleLegacyToggle(checked: boolean) {
+    setIsLegacyItem(checked);
+    if (checked && !legacyNumber && nextSuggestion) {
+      setLegacyNumber(nextSuggestion);
+    }
+  }
 
   function handleAddAnyway() {
     if (confirmDuplicateRef.current) confirmDuplicateRef.current.value = "true";
@@ -118,16 +134,22 @@ export function IntakeForm({
   }
 
   useEffect(() => {
-    // Resets the form ref and local `condition`/`isLegacyItem` state after a
-    // successful submission. Kept as an effect (rather than the render-time
-    // previous-state pattern) because it touches formRef.current, and refs
-    // must not be read or written during render.
+    // Resets the form ref and local `condition`/`isLegacyItem`/`legacyNumber`
+    // state after a successful submission. Kept as an effect (rather than
+    // the render-time previous-state pattern) because it touches
+    // formRef.current, and refs must not be read or written during render.
     if (state.status === "success") {
       formRef.current?.reset();
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCondition("");
       setIsLegacyItem(false);
+      const parsed = parseShoeId(legacyNumber);
+      if (parsed) {
+        setNextSuggestion(`${parsed.prefix}${parsed.internalNumber + 1}`);
+      }
+      setLegacyNumber("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   return (
@@ -217,7 +239,7 @@ export function IntakeForm({
           <input
             type="checkbox"
             checked={isLegacyItem}
-            onChange={(e) => setIsLegacyItem(e.target.checked)}
+            onChange={(e) => handleLegacyToggle(e.target.checked)}
             className={checkboxClass}
           />
           To stary towar (ma stary numer z poprzedniego systemu)
@@ -232,8 +254,28 @@ export function IntakeForm({
               id="legacyNumber"
               name="legacyNumber"
               type="text"
+              value={legacyNumber}
+              onChange={(e) => setLegacyNumber(e.target.value)}
               className={inputClass}
             />
+            {nextSuggestion && (
+              <p className={`text-xs ${mutedTextClass}`}>
+                Podpowiedź na podstawie ostatnich numerów: {nextSuggestion}
+                {legacyNumber !== nextSuggestion && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <button
+                      type="button"
+                      onClick={() => setLegacyNumber(nextSuggestion)}
+                      className="underline hover:text-[var(--color-text)]"
+                    >
+                      użyj
+                    </button>
+                  </>
+                )}
+              </p>
+            )}
           </div>
         )}
 

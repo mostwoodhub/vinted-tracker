@@ -97,11 +97,15 @@ export function AddSaleForm({
   isAdmin,
   initialSale,
   itemStatusByNumber = {},
+  itemBrandByNumber = {},
+  brands = [],
 }: {
   accountNames: string[];
   isAdmin: boolean;
   initialSale?: SaleRow;
   itemStatusByNumber?: Record<string, string>;
+  itemBrandByNumber?: Record<string, string>;
+  brands?: string[];
 }) {
   const isEditing = Boolean(initialSale);
   const action = isEditing ? updateSale.bind(null, initialSale!.id) : createSale;
@@ -132,6 +136,16 @@ export function AddSaleForm({
   const [singleCost, setSingleCost] = useState(
     !isInitialMultiPair ? numToInput(initialSale?.cost_price) : ""
   );
+  const [brand, setBrand] = useState(initialSale?.brand ?? "");
+
+  // Auto-fills brand the moment a typed shoe number matches a known
+  // warehouse item — only while the field is still empty, so it never
+  // overwrites something the employee already typed by hand.
+  function handleSingleShoeIdChange(value: string) {
+    setSingleShoeId(value);
+    const match = itemBrandByNumber[value.trim()];
+    if (match && !brand) setBrand(match);
+  }
 
   const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>(
     initialSale?.photo_urls ?? []
@@ -389,12 +403,28 @@ export function AddSaleForm({
               type="text"
               name="legacyShoeId"
               value={singleShoeId}
-              onChange={(e) => setSingleShoeId(e.target.value)}
+              onChange={(e) => handleSingleShoeIdChange(e.target.value)}
               className={inputClass}
             />
             <ItemMatchHint shoeId={singleShoeId} itemStatusByNumber={itemStatusByNumber} />
           </label>
-          <div />
+          <label className="flex flex-col gap-1.5">
+            <span className={labelClass}>Marka</span>
+            <input
+              type="text"
+              name="brand"
+              list="sale-brand-options"
+              autoComplete="off"
+              value={brand}
+              onChange={(e) => setBrand(e.target.value)}
+              className={inputClass}
+            />
+            <datalist id="sale-brand-options">
+              {brands.map((b) => (
+                <option key={b} value={b} />
+              ))}
+            </datalist>
+          </label>
           <label className="flex flex-col gap-1.5">
             <span className={labelClass}>Koszt</span>
             <input

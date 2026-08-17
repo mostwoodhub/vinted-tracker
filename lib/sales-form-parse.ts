@@ -12,6 +12,7 @@ export type ParsedSaleFields = {
   platform: string;
   saleDate: string;
   legacyShoeId: string;
+  brand: string;
   buyerName: string;
   quantity: number;
   costPrice: number;
@@ -33,6 +34,7 @@ export function parseSaleFormFields(formData: FormData): ParsedSaleFields | { er
   const platform = String(formData.get("platform") ?? "").trim();
   const saleDate = String(formData.get("saleDate") ?? "").trim();
   const legacyShoeId = String(formData.get("legacyShoeId") ?? "").trim();
+  const brand = String(formData.get("brand") ?? "").trim();
   const buyerName = String(formData.get("buyerName") ?? "").trim();
   const quantity = Math.max(1, Math.round(parseNumber(formData.get("quantity"), 1)));
   const costPrice = parseNumber(formData.get("costPrice"));
@@ -74,6 +76,7 @@ export function parseSaleFormFields(formData: FormData): ParsedSaleFields | { er
     platform,
     saleDate,
     legacyShoeId,
+    brand,
     buyerName,
     quantity,
     costPrice,

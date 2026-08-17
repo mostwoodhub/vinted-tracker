@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
-import { getItemStatusByNumber } from "@/lib/item-numbers";
+import { getItemBrandByNumber, getItemStatusByNumber } from "@/lib/item-numbers";
+import { getDistinctValues } from "@/lib/distinct-values";
 import { AddSaleForm } from "./AddSaleForm";
 import { headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
@@ -24,7 +25,11 @@ export default async function AddSalePage() {
     .order("sort_order", { ascending: true });
 
   const accountNames = (data ?? []).map((row) => row.name).filter(Boolean) as string[];
-  const itemStatusByNumber = await getItemStatusByNumber();
+  const [itemStatusByNumber, itemBrandByNumber, brands] = await Promise.all([
+    getItemStatusByNumber(),
+    getItemBrandByNumber(),
+    getDistinctValues("items", "brand"),
+  ]);
 
   return (
     <div className={pageWrapClass}>
@@ -43,6 +48,8 @@ export default async function AddSalePage() {
           accountNames={accountNames}
           isAdmin={isAdmin}
           itemStatusByNumber={itemStatusByNumber}
+          itemBrandByNumber={itemBrandByNumber}
+          brands={brands}
         />
       </div>
     </div>

@@ -10,6 +10,7 @@ export type SaleRow = {
   sale_date: string | null;
   platform: string | null;
   legacy_shoe_id: string | null;
+  brand: string | null;
   buyer_name: string | null;
   cost_price: number | null;
   sale_price: number | null;

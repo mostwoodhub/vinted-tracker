@@ -56,6 +56,7 @@ export async function createSale(
     sale_date: parsed.saleDate,
     platform: parsed.platform,
     legacy_shoe_id: parsed.legacyShoeId || null,
+    brand: parsed.brand || null,
     buyer_name: parsed.buyerName || null,
     quantity: parsed.quantity,
     cost_price: parsed.costPrice || null,

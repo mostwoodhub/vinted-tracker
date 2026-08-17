@@ -153,9 +153,17 @@ export function computeSalesStatistics(
     return profile?.display_name || profile?.email || "Nieznany";
   });
 
-  // Best-effort — only sales whose legacy_shoe_id matches a known item
-  // contribute here; everything else lands in the "—" bucket.
-  const byBrand = buildItemLinkedBreakdown(sales, items, (item) => item.brand ?? "—");
+  // Brand prefers the sale's own stored `brand` column (set directly on the
+  // sale, or auto-filled from a matched item at entry time) — only falling
+  // back to the best-effort legacy_shoe_id→item match for older rows saved
+  // before that column existed. Size/batch have no such direct column yet,
+  // so they still rely purely on the fuzzy match.
+  const brandIndex = buildItemIndex(items);
+  const byBrand = buildBreakdown(sales, (sale) => {
+    if (sale.brand) return sale.brand;
+    const item = matchItemForShoeId(sale.legacy_shoe_id, brandIndex);
+    return item?.brand ?? "—";
+  });
   const bySize = buildItemLinkedBreakdown(sales, items, (item) => item.size ?? "—");
   const byBatch = buildItemLinkedBreakdown(sales, items, (item) => item.batchLabel ?? "—");
 
