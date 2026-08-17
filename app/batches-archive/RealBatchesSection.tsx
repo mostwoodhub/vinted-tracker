@@ -276,49 +276,99 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
   const total = Math.max(batch.quantity ?? 0, batch.itemCount);
   const remaining = Math.max(0, total - batch.soldCount);
 
+  // Same "progress toward break-even" visual as the old app / the legacy
+  // prefix-matched Partie obuwia section below — here it runs off the
+  // manually entered purchaseCost/salesAmount instead of linked sales, since
+  // these batches (mostly imported from the old spreadsheet) have no
+  // per-item sale records tying back to them.
+  const hasCostData = batch.purchaseCost != null;
+  const cost = batch.purchaseCost ?? 0;
+  const sales = batch.salesAmount ?? 0;
+  const recoveredPct = cost > 0 ? Math.round(Math.min(1, sales / cost) * 100) : sales > 0 ? 100 : 0;
+  const breakEvenReached = sales >= cost;
+  const remainingAmount = Math.abs(cost - sales);
+
   return (
-    <div className={`flex items-center gap-[var(--space-md)] ${cardClass}`}>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
+    <div className={`flex flex-col gap-3 ${cardClass}`}>
+      <div className="flex items-center justify-between gap-3">
         <span className="font-bold text-[var(--color-text)]">
-          📦 {batch.label ?? batch.batchNumber}
+          📦 Partia {batch.label ?? batch.batchNumber}
         </span>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-xs font-medium text-[var(--color-text)] transition-opacity hover:opacity-80"
+          >
+            Edytuj
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            className="rounded-full bg-[var(--color-danger-bg)] px-2.5 py-1 text-xs font-medium text-[var(--color-danger)] transition-opacity hover:opacity-80"
+          >
+            Usuń
+          </button>
+        </div>
+      </div>
+
+      {hasCostData && (
+        <>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-surface-2)]">
+            <div
+              className="h-full rounded-full bg-[var(--color-accent)]"
+              style={{ width: `${recoveredPct}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className={`text-xs ${mutedTextClass}`}>Koszt partii</p>
+              <p className="font-semibold text-[var(--color-warning)]">
+                {formatPln(batch.purchaseCost)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className={`text-xs ${mutedTextClass}`}>Sprzedaż razem</p>
+              <p className="font-semibold text-[var(--color-success)]">
+                {formatPln(batch.salesAmount)}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-[var(--color-border)] pt-2">
+            <p className={`text-xs ${mutedTextClass}`}>
+              {breakEvenReached ? "Zysk ponad koszt" : "Pozostało do spłaty"}
+            </p>
+            <p
+              className={`text-lg font-bold ${
+                breakEvenReached
+                  ? "text-[var(--color-success)]"
+                  : "text-[var(--color-danger)]"
+              }`}
+            >
+              {breakEvenReached ? "+" : "-"}
+              {formatPln(remainingAmount)}
+            </p>
+          </div>
+        </>
+      )}
+
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-2">
         <p className={`truncate text-sm ${mutedTextClass}`}>
-          Koszt {batch.purchaseCost != null ? formatPln(batch.purchaseCost) : "—"}
-          {batch.purchaseLocation ? ` · ${batch.purchaseLocation}` : ""}
-          {batch.quantity != null ? ` · zakupiono: ${batch.quantity}` : ""}
-          {" · dodano do systemu: "}
-          {batch.itemCount}
+          {batch.purchaseLocation ? `${batch.purchaseLocation} · ` : ""}
+          {batch.quantity != null ? `zakupiono: ${batch.quantity} · ` : ""}
+          dodano do systemu: {batch.itemCount}
+          {batch.soldPairs != null ? ` · sprzedano (ręcznie): ${batch.soldPairs}` : ""}
         </p>
-        {(batch.salesAmount != null || batch.soldPairs != null) && (
-          <p className={`truncate text-xs ${mutedTextClass}`}>
-            Sprzedaż (ręcznie wpisana): {formatPln(batch.salesAmount)}
-            {batch.soldPairs != null ? ` · ${batch.soldPairs} par` : ""}
+        <div className="shrink-0 text-right">
+          <p className="text-sm font-semibold text-[var(--color-text)]">
+            Zostało {remaining} {remaining === 1 ? "para" : "par"}
           </p>
-        )}
-      </div>
-      <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold text-[var(--color-text)]">
-          Zostało {remaining} {remaining === 1 ? "para" : "par"}
-        </p>
-        <p className={`text-xs ${mutedTextClass}`}>
-          Sprzedano {batch.soldCount} z {total}
-        </p>
-      </div>
-      <div className="flex shrink-0 gap-2">
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-xs font-medium text-[var(--color-text)] transition-opacity hover:opacity-80"
-        >
-          Edytuj
-        </button>
-        <button
-          type="button"
-          onClick={() => setConfirmingDelete(true)}
-          className="rounded-full bg-[var(--color-danger-bg)] px-2.5 py-1 text-xs font-medium text-[var(--color-danger)] transition-opacity hover:opacity-80"
-        >
-          Usuń
-        </button>
+          <p className={`text-xs ${mutedTextClass}`}>
+            Sprzedano {batch.soldCount} z {total}
+          </p>
+        </div>
       </div>
     </div>
   );
