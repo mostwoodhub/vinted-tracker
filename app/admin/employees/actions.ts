@@ -48,6 +48,55 @@ export async function toggleExtraRole(
   return { status: "success" };
 }
 
+export type UpdateLoginState = {
+  status: "idle" | "success" | "error";
+  error?: string;
+};
+
+export async function updateEmployeeLogin(
+  _prevState: UpdateLoginState,
+  formData: FormData
+): Promise<UpdateLoginState> {
+  const access = await checkRole("admin");
+  if (!access.ok) return { status: "error", error: access.error };
+
+  const employeeId = String(formData.get("employeeId") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "").trim();
+
+  if (!employeeId) return { status: "error", error: "Nieprawidłowe dane" };
+  if (!email) return { status: "error", error: "Podaj e-mail" };
+  if (password && password.length < 8) {
+    return { status: "error", error: "Hasło musi mieć min. 8 znaków" };
+  }
+
+  const { data: employee, error: fetchError } = await supabaseAdmin
+    .from("employees")
+    .select("auth_user_id")
+    .eq("id", employeeId)
+    .single();
+
+  if (fetchError) return { status: "error", error: fetchError.message };
+  if (!employee.auth_user_id) {
+    return { status: "error", error: "Ten pracownik nie ma konta logowania" };
+  }
+
+  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+    employee.auth_user_id,
+    {
+      email,
+      email_confirm: true,
+      ...(password ? { password } : {}),
+    }
+  );
+
+  if (updateError) return { status: "error", error: updateError.message };
+
+  revalidatePath("/admin/employees");
+
+  return { status: "success" };
+}
+
 export type CreateEmployeeState = {
   status: "idle" | "success" | "error";
   error?: string;

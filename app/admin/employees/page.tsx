@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { ALL_ROLES, getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { RoleToggle } from "./RoleToggle";
 import { CreateEmployeeForm } from "./CreateEmployeeForm";
+import { EditLoginForm } from "./EditLoginForm";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
 type EmployeeRow = {
@@ -10,6 +11,7 @@ type EmployeeRow = {
   full_name: string;
   role: string;
   extra_roles: string[];
+  auth_user_id: string | null;
 };
 
 export default async function EmployeesPage() {
@@ -20,12 +22,20 @@ export default async function EmployeesPage() {
     redirect("/warehouse");
   }
 
-  const { data: employees } = await supabaseAdmin
-    .from("employees")
-    .select("id, full_name, role, extra_roles")
-    .order("full_name", { ascending: true });
+  // Independent of each other — fire together instead of one after another.
+  const [{ data: employees }, { data: authUsers }] = await Promise.all([
+    supabaseAdmin
+      .from("employees")
+      .select("id, full_name, role, extra_roles, auth_user_id")
+      .order("full_name", { ascending: true }),
+    // Email lives on the Supabase Auth user, not the `employees` row itself.
+    supabaseAdmin.auth.admin.listUsers({ perPage: 1000 }),
+  ]);
 
   const rows = (employees ?? []) as EmployeeRow[];
+  const emailByAuthUserId = new Map(
+    (authUsers?.users ?? []).map((u) => [u.id, u.email ?? null])
+  );
 
   return (
     <div className={pageWrapClass}>
@@ -54,6 +64,20 @@ export default async function EmployeesPage() {
                   <p className={`text-xs ${mutedTextClass}`}>
                     Rola podstawowa: {employee.role}
                   </p>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className={`text-xs ${mutedTextClass}`}>
+                    Dane logowania
+                  </span>
+                  <EditLoginForm
+                    employeeId={employee.id}
+                    email={
+                      employee.auth_user_id
+                        ? emailByAuthUserId.get(employee.auth_user_id) ?? null
+                        : null
+                    }
+                  />
                 </div>
 
                 <div className="flex flex-col gap-1">
