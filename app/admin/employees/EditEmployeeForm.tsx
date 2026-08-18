@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { updateEmployeeLogin, type UpdateLoginState } from "./actions";
+import { updateEmployee, type UpdateEmployeeState } from "./actions";
 import {
   buttonPrimaryClass,
   buttonSecondaryClass,
@@ -11,7 +11,7 @@ import {
   labelClass,
 } from "@/lib/ui-classes";
 
-const initialState: UpdateLoginState = { status: "idle" };
+const initialState: UpdateEmployeeState = { status: "idle" };
 
 function SaveButton() {
   const { pending } = useFormStatus();
@@ -22,15 +22,17 @@ function SaveButton() {
   );
 }
 
-export function EditLoginForm({
+export function EditEmployeeForm({
   employeeId,
+  fullName,
   email,
 }: {
   employeeId: string;
+  fullName: string;
   email: string | null;
 }) {
   const [editing, setEditing] = useState(false);
-  const [state, formAction] = useActionState(updateEmployeeLogin, initialState);
+  const [state, formAction] = useActionState(updateEmployee, initialState);
 
   // Adjust state during render (React-sanctioned pattern) instead of an
   // effect, to close the form the moment a save succeeds — without this
@@ -54,7 +56,7 @@ export function EditLoginForm({
             onClick={() => setEditing(true)}
             className="rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-xs font-medium text-[var(--color-text)] transition-opacity hover:opacity-80"
           >
-            Edytuj dane logowania
+            Edytuj dane pracownika
           </button>
         )}
       </div>
@@ -64,6 +66,17 @@ export function EditLoginForm({
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <input type="hidden" name="employeeId" value={employeeId} />
+
+      <label className="flex flex-col gap-1.5">
+        <span className={labelClass}>Imię i nazwisko</span>
+        <input
+          name="fullName"
+          type="text"
+          required
+          defaultValue={fullName}
+          className={inputClass}
+        />
+      </label>
 
       <label className="flex flex-col gap-1.5">
         <span className={labelClass}>E-mail</span>

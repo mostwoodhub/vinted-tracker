@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { ALL_ROLES, getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { RoleToggle } from "./RoleToggle";
 import { CreateEmployeeForm } from "./CreateEmployeeForm";
-import { EditLoginForm } from "./EditLoginForm";
+import { EditEmployeeForm } from "./EditEmployeeForm";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
 type EmployeeRow = {
@@ -70,8 +70,9 @@ export default async function EmployeesPage() {
                   <span className={`text-xs ${mutedTextClass}`}>
                     Dane logowania
                   </span>
-                  <EditLoginForm
+                  <EditEmployeeForm
                     employeeId={employee.id}
+                    fullName={employee.full_name}
                     email={
                       employee.auth_user_id
                         ? emailByAuthUserId.get(employee.auth_user_id) ?? null

@@ -48,23 +48,25 @@ export async function toggleExtraRole(
   return { status: "success" };
 }
 
-export type UpdateLoginState = {
+export type UpdateEmployeeState = {
   status: "idle" | "success" | "error";
   error?: string;
 };
 
-export async function updateEmployeeLogin(
-  _prevState: UpdateLoginState,
+export async function updateEmployee(
+  _prevState: UpdateEmployeeState,
   formData: FormData
-): Promise<UpdateLoginState> {
+): Promise<UpdateEmployeeState> {
   const access = await checkRole("admin");
   if (!access.ok) return { status: "error", error: access.error };
 
   const employeeId = String(formData.get("employeeId") ?? "").trim();
+  const fullName = String(formData.get("fullName") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "").trim();
 
   if (!employeeId) return { status: "error", error: "Nieprawidłowe dane" };
+  if (!fullName) return { status: "error", error: "Podaj imię i nazwisko" };
   if (!email) return { status: "error", error: "Podaj e-mail" };
   if (password && password.length < 8) {
     return { status: "error", error: "Hasło musi mieć min. 8 znaków" };
@@ -81,7 +83,7 @@ export async function updateEmployeeLogin(
     return { status: "error", error: "Ten pracownik nie ma konta logowania" };
   }
 
-  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+  const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(
     employee.auth_user_id,
     {
       email,
@@ -90,7 +92,14 @@ export async function updateEmployeeLogin(
     }
   );
 
-  if (updateError) return { status: "error", error: updateError.message };
+  if (authUpdateError) return { status: "error", error: authUpdateError.message };
+
+  const { error: nameUpdateError } = await supabaseAdmin
+    .from("employees")
+    .update({ full_name: fullName })
+    .eq("id", employeeId);
+
+  if (nameUpdateError) return { status: "error", error: nameUpdateError.message };
 
   revalidatePath("/admin/employees");
 
