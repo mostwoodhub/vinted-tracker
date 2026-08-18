@@ -22,6 +22,7 @@ import {
   inputClass,
   labelClass,
   mutedTextClass,
+  pillClass,
 } from "@/lib/ui-classes";
 
 const PLATFORMS = ["Vinted", "Allegro", "OLX"];
@@ -177,6 +178,7 @@ export function AddSaleForm({
   }, [accountNames, initialSale?.account_name]);
 
   const [country, setCountry] = useState(initialSale?.country ?? DEFAULT_COUNTRY);
+  const [vatMode, setVatMode] = useState(initialSale?.vat_mode ?? "full");
   const [vatRate, setVatRate] = useState(
     numToInput(initialSale?.vat_rate) || String(COUNTRY_VAT_RATE_MODE[DEFAULT_COUNTRY])
   );
@@ -206,8 +208,14 @@ export function AddSaleForm({
 
   function handleCountryChange(value: string) {
     setCountry(value);
-    const mode = COUNTRY_VAT_RATE_MODE[value];
-    if (mode != null) setVatRate(String(mode));
+    if (vatMode === "zero") return;
+    const fullRate = COUNTRY_VAT_RATE_MODE[value];
+    if (fullRate != null) setVatRate(String(fullRate));
+  }
+
+  function handleVatModeChange(mode: string) {
+    setVatMode(mode);
+    setVatRate(mode === "zero" ? "0" : String(COUNTRY_VAT_RATE_MODE[country] ?? 23));
   }
 
   function syncPhotoInput(files: File[]) {
@@ -699,51 +707,56 @@ export function AddSaleForm({
           />
         </label>
 
-        <label className="flex flex-col gap-1.5">
-          <span className={labelClass}>Stawka VAT %</span>
-          <input
-            type="number"
-            name="vatRate"
-            step="0.01"
-            min="0"
-            value={vatRate}
-            onChange={(e) => setVatRate(e.target.value)}
-            className={inputClass}
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className={labelClass}>Tryb VAT</span>
-          <select name="vatMode" defaultValue={initialSale?.vat_mode ?? "full"} className={inputClass}>
+        <input type="hidden" name="vatRate" value={vatRate} />
+        <input type="hidden" name="vatMode" value={vatMode} />
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <span className={labelClass}>VAT</span>
+          <div className="flex gap-2">
             {VAT_MODES.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => handleVatModeChange(m.value)}
+                className={`flex-1 ${pillClass(vatMode === m.value)}`}
+              >
+                {m.value === "zero"
+                  ? "0%"
+                  : `Pełny VAT (${COUNTRY_VAT_RATE_MODE[country] ?? 23}%)`}
+              </button>
             ))}
-          </select>
-        </label>
-
-        <div className="flex flex-col gap-1.5">
-          <span className={labelClass}>Kwota VAT</span>
-          <p className={`px-1 py-2.5 text-sm ${mutedTextClass}`}>
-            {formatPln(calc.vatAmount)}
+          </div>
+          <p className={`text-xs ${mutedTextClass}`}>
+            Kwota VAT: {formatPln(calc.vatAmount)}
           </p>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
-          <input
-            type="checkbox"
-            name="incomeTaxApplied"
-            checked={incomeTaxApplied}
-            onChange={(e) => setIncomeTaxApplied(e.target.checked)}
-            className={checkboxClass}
-          />
-          Zastosuj podatek dochodowy (3%)
-        </label>
-        <div className="flex flex-col gap-1.5">
-          <span className={labelClass}>Kwota podatku dochodowego</span>
-          <p className={`px-1 py-2.5 text-sm ${mutedTextClass}`}>
-            {formatPln(calc.incomeTaxAmount)}
+        <input
+          type="checkbox"
+          name="incomeTaxApplied"
+          checked={incomeTaxApplied}
+          onChange={() => {}}
+          className="hidden"
+        />
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <span className={labelClass}>Podatek dochodowy (3%)</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIncomeTaxApplied(true)}
+              className={`flex-1 ${pillClass(incomeTaxApplied)}`}
+            >
+              Tak
+            </button>
+            <button
+              type="button"
+              onClick={() => setIncomeTaxApplied(false)}
+              className={`flex-1 ${pillClass(!incomeTaxApplied)}`}
+            >
+              Nie
+            </button>
+          </div>
+          <p className={`text-xs ${mutedTextClass}`}>
+            Kwota podatku dochodowego: {formatPln(calc.incomeTaxAmount)}
           </p>
         </div>
 
