@@ -34,6 +34,10 @@ export type RealBatchRow = {
   soldPairs: number | null;
   itemCount: number;
   soldCount: number;
+  // Sales found live in the `sales` table matching this batch's letter
+  // prefix — added on top of salesAmount/soldPairs, not a replacement.
+  linkedSalesAmount: number;
+  linkedSalesCount: number;
 };
 
 function SaveButton() {
@@ -274,21 +278,21 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
   // bigger: what was declared bought, or how many items actually got added
   // (covers the case items were added without ever setting quantity).
   const total = Math.max(batch.quantity ?? 0, batch.itemCount);
-  // Same idea for "sold": real item statuses win when items are actually
-  // tracked in the system, otherwise fall back to the manually entered
-  // count (the spreadsheet-imported batches have no items in the system at
-  // all, so soldCount would otherwise always show 0 for them).
-  const effectiveSold = Math.max(batch.soldCount, batch.soldPairs ?? 0);
+  // Manually entered soldPairs (spreadsheet baseline) plus whatever the live
+  // `sales` table has matched to this batch since, then real item statuses
+  // win if that's somehow bigger (covers items tracked via Intake).
+  const manualPlusLinkedSold = (batch.soldPairs ?? 0) + batch.linkedSalesCount;
+  const effectiveSold = Math.max(batch.soldCount, manualPlusLinkedSold);
   const remaining = Math.max(0, total - effectiveSold);
 
   // Same "progress toward break-even" visual as the old app / the legacy
-  // prefix-matched Partie obuwia section below — here it runs off the
-  // manually entered purchaseCost/salesAmount instead of linked sales, since
-  // these batches (mostly imported from the old spreadsheet) have no
-  // per-item sale records tying back to them.
+  // prefix-matched Partie obuwia section below. Sales total is the
+  // spreadsheet-imported baseline (money already collected before this
+  // system tracked sales) plus whatever's been sold since and found in the
+  // live `sales` table by shoe-id prefix.
   const hasCostData = batch.purchaseCost != null;
   const cost = batch.purchaseCost ?? 0;
-  const sales = batch.salesAmount ?? 0;
+  const sales = (batch.salesAmount ?? 0) + batch.linkedSalesAmount;
   const recoveredPct = cost > 0 ? Math.round(Math.min(1, sales / cost) * 100) : sales > 0 ? 100 : 0;
   const breakEvenReached = sales >= cost;
   const remainingAmount = Math.abs(cost - sales);
@@ -336,8 +340,13 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
             <div className="text-right">
               <p className={`text-xs ${mutedTextClass}`}>Sprzedaż razem</p>
               <p className="font-semibold text-[var(--color-success)]">
-                {formatPln(batch.salesAmount)}
+                {formatPln(sales)}
               </p>
+              {batch.linkedSalesAmount > 0 && (
+                <p className={`text-xs ${mutedTextClass}`}>
+                  w tym {formatPln(batch.linkedSalesAmount)} z {batch.linkedSalesCount} sprzedaży w systemie
+                </p>
+              )}
             </div>
           </div>
 

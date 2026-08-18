@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { formatPln } from "@/lib/format";
-import { computeBatchPerformance } from "@/lib/batch-stats";
+import { computeBatchPerformance, computeLinkedSales } from "@/lib/batch-stats";
 import type { SaleRow } from "@/lib/sales-types";
 import { RealBatchesSection, type RealBatchRow } from "./RealBatchesSection";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
@@ -61,18 +61,27 @@ export default async function BatchesArchivePage() {
     }
   }
 
-  const realBatches: RealBatchRow[] = (realBatchesRaw ?? []).map((b) => ({
-    id: b.id,
-    label: b.label,
-    batchNumber: b.batch_number,
-    purchaseCost: b.purchase_cost,
-    purchaseLocation: b.purchase_location,
-    quantity: b.quantity,
-    salesAmount: b.sales_amount,
-    soldPairs: b.sold_pairs,
-    itemCount: itemCountByBatch.get(b.id) ?? 0,
-    soldCount: soldCountByBatch.get(b.id) ?? 0,
-  }));
+  const realBatches: RealBatchRow[] = (realBatchesRaw ?? []).map((b) => {
+    // Tops up the manually entered/spreadsheet-imported sales_amount and
+    // sold_pairs with sales actually found in the live `sales` table for
+    // this batch's letter — added on top, not replacing the baseline, since
+    // the spreadsheet snapshot predates the sales-tracking system.
+    const linked = b.label ? computeLinkedSales(sales as SaleRow[], b.label) : { amount: 0, count: 0 };
+    return {
+      id: b.id,
+      label: b.label,
+      batchNumber: b.batch_number,
+      purchaseCost: b.purchase_cost,
+      purchaseLocation: b.purchase_location,
+      quantity: b.quantity,
+      salesAmount: b.sales_amount,
+      soldPairs: b.sold_pairs,
+      itemCount: itemCountByBatch.get(b.id) ?? 0,
+      soldCount: soldCountByBatch.get(b.id) ?? 0,
+      linkedSalesAmount: linked.amount,
+      linkedSalesCount: linked.count,
+    };
+  });
 
   return (
     <div className={pageWrapClass}>

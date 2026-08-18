@@ -1,11 +1,24 @@
 import type { SaleRow } from "@/lib/sales-types";
 
 // The legacy app encoded the purchase batch directly in the shoe id: shoes
-// bought as part of batch "Q" got ids like "Q16362". Verified against a real
-// historical export ("Partie obuwia" sheet): batch Q had cost 75900.00 and
-// Przychód netto 5922.66 -> Status "Pozostało 69977.34 zł", which only
-// reconciles if Przychód netto = sum(net_profit) of sales whose
-// legacy_shoe_id starts with that batch's letter(s).
+// bought as part of batch "Q" got ids like "Q16362" — matched below by
+// extracting that letter prefix.
+//
+// Revenue counted per sale is sale_price minus platform fee, VAT, and
+// income tax — deliberately NOT minus cost_price. cost_price is already
+// what the batch's own purchase_cost/koszt partii represents, so netting it
+// out here too would double-subtract it against the batch cost.
+function saleRevenueAfterTax(
+  sale: Pick<SaleRow, "sale_price" | "fee_amount" | "vat_amount" | "income_tax_amount">
+): number {
+  return (
+    (sale.sale_price ?? 0) -
+    (sale.fee_amount ?? 0) -
+    (sale.vat_amount ?? 0) -
+    (sale.income_tax_amount ?? 0)
+  );
+}
+
 export type BatchPerformance = {
   name: string;
   cost: number;
@@ -14,6 +27,24 @@ export type BatchPerformance = {
   breakEvenReached: boolean;
   saleCount: number;
 };
+
+// Multi-pair sales join several shoe ids with ", " — check each one. A naive
+// `startsWith` check is unsafe: bulk-import placeholder ids like
+// "IMP0930183" start with "I", which would wrongly attribute ~6,000
+// unrelated sales to a batch literally named "I". Extracting the full
+// leading letter run and comparing it exactly avoids that class of false
+// positive (verified against real data — "I" naive-matched 6167 sales vs. 18
+// with exact matching).
+export function saleMatchesBatchLabel(legacyShoeId: string | null, label: string): boolean {
+  if (!legacyShoeId) return false;
+  return legacyShoeId
+    .split(",")
+    .map((part) => part.trim())
+    .some((part) => {
+      const match = part.match(/^([A-Za-z]+)(\d+)$/);
+      return match !== null && match[1] === label;
+    });
+}
 
 export function computeBatchPerformance(
   allSales: SaleRow[],
@@ -27,10 +58,8 @@ export function computeBatchPerformance(
 
   return Array.from(costByBatch.entries())
     .map(([name, cost]) => {
-      const matched = allSales.filter((sale) =>
-        (sale.legacy_shoe_id ?? "").startsWith(name)
-      );
-      const netRevenue = matched.reduce((sum, s) => sum + (s.net_profit ?? 0), 0);
+      const matched = allSales.filter((sale) => saleMatchesBatchLabel(sale.legacy_shoe_id, name));
+      const netRevenue = matched.reduce((sum, s) => sum + saleRevenueAfterTax(s), 0);
       const remaining = cost - netRevenue;
       return {
         name,
@@ -42,4 +71,19 @@ export function computeBatchPerformance(
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Sales recorded in the live `sales` table (imported or manually entered)
+// that match a real batch's label by shoe-id prefix — used to top up the
+// manually entered / spreadsheet-imported sales_amount and sold_pairs
+// baseline on "Partie zakupowe" cards, rather than replacing it.
+export function computeLinkedSales(
+  allSales: SaleRow[],
+  label: string
+): { amount: number; count: number } {
+  const matched = allSales.filter((sale) => saleMatchesBatchLabel(sale.legacy_shoe_id, label));
+  return {
+    amount: matched.reduce((sum, s) => sum + saleRevenueAfterTax(s), 0),
+    count: matched.length,
+  };
 }
