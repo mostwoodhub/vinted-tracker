@@ -754,34 +754,62 @@ export function WarehouseCards({
           return (
             <div
               key={item.id}
-              className="flex items-center gap-[var(--space-md)] rounded-[var(--radius-md)] bg-[var(--color-surface)] p-[var(--card-padding)]"
+              className="flex flex-col gap-3 rounded-[var(--radius-md)] bg-[var(--color-surface)] p-[var(--card-padding)] sm:flex-row sm:items-center sm:gap-[var(--space-md)]"
             >
-              {isAdmin && (
-                <input
-                  type="checkbox"
-                  checked={selectedItems.has(item.id)}
-                  onChange={() => toggleItemSelected(item.id)}
-                  className="h-4 w-4 shrink-0"
-                  aria-label={`Zaznacz ${formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}`}
-                />
-              )}
+              <div className="flex items-start gap-[var(--space-md)]">
+                {isAdmin && (
+                  <input
+                    type="checkbox"
+                    checked={selectedItems.has(item.id)}
+                    onChange={() => toggleItemSelected(item.id)}
+                    className="mt-1 h-4 w-4 shrink-0 sm:mt-0"
+                    aria-label={`Zaznacz ${formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}`}
+                  />
+                )}
 
-              {item.photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={item.photoUrl}
-                  alt=""
-                  onClick={() => setZoomedUrl(item.photoUrl)}
-                  className="h-16 w-16 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover transition-opacity hover:opacity-80"
-                />
-              ) : (
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-2xl">
-                  📦
+                {item.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.photoUrl}
+                    alt=""
+                    onClick={() => setZoomedUrl(item.photoUrl)}
+                    className="h-16 w-16 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover transition-opacity hover:opacity-80"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-2xl">
+                    📦
+                  </div>
+                )}
+
+                <div className="flex min-w-0 flex-1 flex-col gap-1 sm:hidden">
+                  <Link
+                    href={`/items/${item.id}`}
+                    className="line-clamp-2 font-bold text-[var(--color-text)] hover:text-[var(--color-accent-fg)]"
+                  >
+                    ✏️ {formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}{" "}
+                    · {item.brand ?? "—"} {item.model ?? ""}
+                  </Link>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${meta.badge}`}
+                    >
+                      {meta.label}
+                    </span>
+                    {item.daysInStatus != null &&
+                      item.daysInStatus >= STALE_THRESHOLD_DAYS && (
+                        <span
+                          title="Towar długo bez zmiany statusu"
+                          className="rounded-full bg-[var(--color-danger-bg)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-danger)]"
+                        >
+                          ⏳ {item.daysInStatus} dni bez ruchu
+                        </span>
+                      )}
+                  </div>
                 </div>
-              )}
+              </div>
 
               <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="hidden flex-wrap items-center gap-2 sm:flex">
                   <Link
                     href={`/items/${item.id}`}
                     className="font-bold text-[var(--color-text)] hover:text-[var(--color-accent-fg)]"
@@ -823,7 +851,7 @@ export function WarehouseCards({
                 <CostEditor itemId={item.id} costPrice={item.cost_price} />
               </div>
 
-              <div className="shrink-0 text-right">
+              <div className="flex items-center justify-between gap-3 sm:shrink-0 sm:flex-col sm:items-end sm:justify-start sm:gap-1">
                 <p
                   className={`text-2xl font-bold ${
                     item.price != null
@@ -833,14 +861,14 @@ export function WarehouseCards({
                 >
                   {item.price != null ? `${item.price} zł` : "—"}
                 </p>
-              </div>
 
-              {isAdmin && (
-                <ItemDeleteButton
-                  itemId={item.id}
-                  label={formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}
-                />
-              )}
+                {isAdmin && (
+                  <ItemDeleteButton
+                    itemId={item.id}
+                    label={formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}
+                  />
+                )}
+              </div>
             </div>
           );
         })}
