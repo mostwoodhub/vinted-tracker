@@ -390,7 +390,7 @@ export function WarehouseCards({
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState(defaultStatusFilter);
   const [brand, setBrand] = useState("");
-  const [selectedSizes, setSelectedSizes] = useState<Set<string>>(new Set());
+  const [size, setSize] = useState("");
   const [batch, setBatch] = useState("");
   const [condition, setCondition] = useState("");
   const [minPrice, setMinPrice] = useState("");
@@ -459,15 +459,6 @@ export function WarehouseCards({
     });
   }
 
-  const toggleSize = (size: string) => {
-    setSelectedSizes((prev) => {
-      const next = new Set(prev);
-      if (next.has(size)) next.delete(size);
-      else next.add(size);
-      return next;
-    });
-  };
-
   const filtered = useMemo(() => {
     const min = minPrice ? Number(minPrice) : null;
     const max = maxPrice ? Number(maxPrice) : null;
@@ -480,11 +471,7 @@ export function WarehouseCards({
         return false;
       }
       if (brand && item.brand !== brand) return false;
-      if (
-        selectedSizes.size > 0 &&
-        (!item.size || !selectedSizes.has(item.size))
-      )
-        return false;
+      if (size && item.size !== size) return false;
       if (batch && item.batches?.label !== batch) return false;
       if (condition && item.condition !== condition) return false;
       if (min !== null && (item.price == null || item.price < min))
@@ -506,7 +493,7 @@ export function WarehouseCards({
     items,
     statusFilter,
     brand,
-    selectedSizes,
+    size,
     batch,
     condition,
     minPrice,
@@ -620,6 +607,22 @@ export function WarehouseCards({
         </label>
 
         <label className="flex flex-col gap-1.5">
+          <span className="text-xs text-[var(--color-text-muted)]">Rozmiar</span>
+          <select
+            value={size}
+            onChange={(e) => setSize(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">Wszystkie</option>
+            {sizes.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
           <span className="text-xs text-[var(--color-text-muted)]">Partia</span>
           <select
             value={batch}
@@ -682,22 +685,6 @@ export function WarehouseCards({
         >
           📤 Eksportuj CSV
         </button>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-[var(--color-text-muted)]">Rozmiar</span>
-        <div className="flex flex-wrap gap-2">
-          {sizes.map((size) => (
-            <button
-              key={size}
-              type="button"
-              onClick={() => toggleSize(size)}
-              className={pillClass(selectedSizes.has(size))}
-            >
-              {size}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-[var(--space-md)] sm:grid-cols-4">

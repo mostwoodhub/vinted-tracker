@@ -106,7 +106,7 @@ export default async function WarehousePage() {
         <h1 className="text-3xl font-bold tracking-tight text-[var(--color-text)]">
           Magazyn
         </h1>
-        <WarehouseCards items={cardItems} isAdmin={isAdmin} />
+        <WarehouseCards items={cardItems} defaultStatusFilter="" isAdmin={isAdmin} />
       </div>
     </div>
   );
