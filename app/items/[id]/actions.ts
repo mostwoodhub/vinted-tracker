@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
-import { resolveBatchId } from "@/lib/batches";
+import { resolveBatchId, deriveBatchLabelFromLegacyNumber } from "@/lib/batches";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
 import { generateAiCard } from "./ai-card";
 
@@ -150,7 +150,7 @@ export async function updateItem(
   const brand = String(formData.get("brand") ?? "").trim();
   const model = String(formData.get("model") ?? "").trim();
   const size = String(formData.get("size") ?? "").trim();
-  const batchLabel = String(formData.get("batchLabel") ?? "").trim();
+  let batchLabel = String(formData.get("batchLabel") ?? "").trim();
   const legacyNumber = String(formData.get("legacyNumber") ?? "").trim();
   const condition = String(formData.get("condition") ?? "").trim();
   const priceRaw = String(formData.get("price") ?? "").trim();
@@ -184,6 +184,12 @@ export async function updateItem(
     if (Number.isNaN(price)) {
       return { status: "error", error: "Nieprawidłowa cena" };
     }
+  }
+
+  // No Partia typed by hand, but the old number's letters name the batch
+  // (e.g. "R15950" → batch "R") — derive it instead of leaving it blank.
+  if (!batchLabel) {
+    batchLabel = deriveBatchLabelFromLegacyNumber(legacyNumber) ?? "";
   }
 
   try {

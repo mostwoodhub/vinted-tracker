@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
-import { resolveBatchId } from "@/lib/batches";
+import { resolveBatchId, deriveBatchLabelFromLegacyNumber } from "@/lib/batches";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
 import { formatItemNumber } from "@/lib/item-number";
 import { generateIntakeEstimate } from "@/lib/ai-price-estimate";
@@ -30,7 +30,7 @@ export async function createItem(
   const brand = String(formData.get("brand") ?? "").trim();
   const size = String(formData.get("size") ?? "").trim();
   const insoleLength = String(formData.get("insoleLength") ?? "").trim();
-  const batchLabel = String(formData.get("batchLabel") ?? "").trim();
+  let batchLabel = String(formData.get("batchLabel") ?? "").trim();
   const condition = String(formData.get("condition") ?? "").trim();
   const priceRaw = String(formData.get("price") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim();
@@ -69,6 +69,12 @@ export async function createItem(
     if (Number.isNaN(price)) {
       return { status: "error", error: "Nieprawidłowa cena" };
     }
+  }
+
+  // No Partia typed by hand, but the old number's letters name the batch
+  // (e.g. "R15950" → batch "R") — derive it instead of leaving it blank.
+  if (!batchLabel) {
+    batchLabel = deriveBatchLabelFromLegacyNumber(legacyNumber) ?? "";
   }
 
   try {
