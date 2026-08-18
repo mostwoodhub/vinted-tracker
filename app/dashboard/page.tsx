@@ -5,6 +5,7 @@ import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { computeLinkedSales } from "@/lib/batch-stats";
 import type { SaleRow } from "@/lib/sales-types";
+import { IntakeFrequencyChart, type HourlyIntakeRow } from "./IntakeFrequencyChart";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
 const PROCESSING_STATUSES = [
@@ -35,6 +36,18 @@ function Tile({ label, value }: { label: string; value: React.ReactNode }) {
 // yesterday's date.
 function warsawDateString(date: Date): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Warsaw" }).format(date);
+}
+
+// sv-SE reliably formats hour 0 as "00" rather than the "24" some locales
+// produce for hour12:false at midnight.
+function warsawHour(date: Date): number {
+  return Number(
+    new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Europe/Warsaw",
+      hour: "2-digit",
+      hour12: false,
+    }).format(date)
+  );
 }
 
 export default async function DashboardPage() {
@@ -99,6 +112,30 @@ export default async function DashboardPage() {
       count,
     }))
     .sort((a, b) => b.count - a.count);
+
+  // Same-order employee list drives both the stacked bar colors and the
+  // legend — fixed by descending today's total, so the busiest person's
+  // color stays stable as the day goes on rather than shuffling.
+  const activeEmployeeNames = todaysIntakeRows.map((r) => r.name);
+  const hourlyCounts = new Map<number, Map<string, number>>();
+  for (const item of items ?? []) {
+    if (!item.created_by || !item.created_at) continue;
+    const createdAt = new Date(item.created_at);
+    if (warsawDateString(createdAt) !== todayWarsaw) continue;
+    const hour = warsawHour(createdAt);
+    const name = nameByEmployeeId.get(item.created_by) ?? "Nieznany";
+    const perEmployee = hourlyCounts.get(hour) ?? new Map<string, number>();
+    perEmployee.set(name, (perEmployee.get(name) ?? 0) + 1);
+    hourlyCounts.set(hour, perEmployee);
+  }
+  const hourlyIntakeData: HourlyIntakeRow[] = Array.from({ length: 24 }, (_, hour) => {
+    const perEmployee = hourlyCounts.get(hour);
+    const row: HourlyIntakeRow = { hour: `${String(hour).padStart(2, "0")}:00` };
+    for (const name of activeEmployeeNames) {
+      row[name] = perEmployee?.get(name) ?? 0;
+    }
+    return row;
+  });
 
   const rows = items ?? [];
 
@@ -231,6 +268,7 @@ export default async function DashboardPage() {
               </tbody>
             </table>
           </div>
+          <IntakeFrequencyChart data={hourlyIntakeData} employeeNames={activeEmployeeNames} />
         </div>
 
         <div className="grid grid-cols-1 gap-[var(--space-md)] sm:grid-cols-3">
