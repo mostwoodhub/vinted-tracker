@@ -8,7 +8,7 @@ import { WorkingPhotosUpload } from "./WorkingPhotosUpload";
 import { PhotoSetsManager, type PhotoSetData, type PhotoSetPhoto } from "./PhotoSetsManager";
 import { EditItemForm } from "./EditItemForm";
 import { DeleteItemButton } from "./DeleteItemButton";
-import { DownloadPhotoButton } from "@/app/DownloadPhotoButton";
+import { PhotoGrid } from "./PhotoGrid";
 import { RetryAiCardButton } from "./RetryAiCardButton";
 import { ApplyAiPriceButton } from "./ApplyAiPriceButton";
 import { ReturnItemForm } from "./ReturnItemForm";
@@ -44,42 +44,6 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="flex flex-col gap-0.5">
       <dt className={`text-xs ${mutedTextClass}`}>{label}</dt>
       <dd className="font-medium text-[var(--color-text)]">{value}</dd>
-    </div>
-  );
-}
-
-function PhotoGrid({
-  photos,
-  signedUrlByPath,
-  emptyText,
-}: {
-  photos: ItemPhoto[];
-  signedUrlByPath: Map<string, string>;
-  emptyText: string;
-}) {
-  if (photos.length === 0) {
-    return <p className={`text-sm ${mutedTextClass}`}>{emptyText}</p>;
-  }
-
-  return (
-    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-      {photos.map((photo) => {
-        const url = signedUrlByPath.get(photo.storage_path);
-        if (!url) return null;
-        return (
-          <div key={photo.id} className="relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={url}
-              alt=""
-              className="aspect-square w-full rounded-[var(--radius-sm)] object-cover"
-            />
-            <div className="absolute bottom-1 right-1">
-              <DownloadPhotoButton url={url} filename={`${photo.id}.jpg`} />
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -297,7 +261,7 @@ export default async function ItemPage({
             </h2>
             <PhotoGrid
               photos={workingPhotos}
-              signedUrlByPath={signedUrlByPath}
+              signedUrlByPath={Object.fromEntries(signedUrlByPath)}
               emptyText="Brak zdjęć roboczych."
             />
             <WorkingPhotosUpload itemId={item.id} />
@@ -309,7 +273,7 @@ export default async function ItemPage({
             </h2>
             <PhotoGrid
               photos={finalPhotos}
-              signedUrlByPath={signedUrlByPath}
+              signedUrlByPath={Object.fromEntries(signedUrlByPath)}
               emptyText="Brak zdjęć finalnych."
             />
             <FinalPhotosUpload itemId={item.id} />

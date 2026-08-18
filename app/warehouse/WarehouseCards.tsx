@@ -382,6 +382,7 @@ export function WarehouseCards({
   const [maxPrice, setMaxPrice] = useState("");
   const [search, setSearch] = useState("");
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [zoomedUrl, setZoomedUrl] = useState<string | null>(null);
   const [deletePending, startDeleteTransition] = useTransition();
   const [statusPending, startStatusTransition] = useTransition();
   const [pricePending, startPriceTransition] = useTransition();
@@ -723,7 +724,8 @@ export function WarehouseCards({
                 <img
                   src={item.photoUrl}
                   alt=""
-                  className="h-16 w-16 shrink-0 rounded-[var(--radius-sm)] object-cover"
+                  onClick={() => setZoomedUrl(item.photoUrl)}
+                  className="h-16 w-16 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover transition-opacity hover:opacity-80"
                 />
               ) : (
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-2xl">
@@ -802,6 +804,21 @@ export function WarehouseCards({
           </div>
         )}
       </div>
+
+      {zoomedUrl && (
+        <div
+          onClick={() => setZoomedUrl(null)}
+          className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zoomedUrl}
+            alt=""
+            onClick={() => setZoomedUrl(null)}
+            className="max-h-full max-w-full rounded-[var(--radius-md)] object-contain"
+          />
+        </div>
+      )}
     </div>
   );
 }
