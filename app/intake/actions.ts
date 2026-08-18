@@ -125,6 +125,7 @@ export async function createItem(
         price,
         note: note || null,
         legacy_number: legacyNumber || null,
+        created_by: access.employee.id,
       })
       .select("id, internal_number")
       .single();
@@ -140,6 +141,7 @@ export async function createItem(
       item_id: item.id,
       from_status: null,
       to_status: "received",
+      changed_by: access.employee.id,
     });
 
     for (const photo of photos) {

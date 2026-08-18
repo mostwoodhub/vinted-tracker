@@ -29,6 +29,14 @@ function Tile({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+// "Today" by the calendar date in Warsaw, not the server's UTC clock —
+// Vercel functions run in UTC, so for the first 1-2 hours of every Warsaw
+// day a naive `new Date().toISOString().slice(0,10)` would still report
+// yesterday's date.
+function warsawDateString(date: Date): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Warsaw" }).format(date);
+}
+
 export default async function DashboardPage() {
   const employee = await getCurrentEmployee();
   const roles = getEffectiveRoles(employee);
@@ -38,39 +46,59 @@ export default async function DashboardPage() {
   }
 
   // Independent of each other — fire together instead of one after another.
-  const [{ data: items }, { data: batches }, { data: expenseRows }, sales] = await Promise.all([
-    supabaseAdmin
-      .from("items")
-      .select("id, status, price, cost_price, batch_id")
-      .is("deleted_at", null),
-    supabaseAdmin
-      .from("batches")
-      .select("id, label, batch_number, purchase_cost, quantity, sales_amount, sold_pairs")
-      .order("batch_number", { ascending: true }),
-    // Batches that predate the real `batches` table — a cost was logged in
-    // `expenses` against a letter label at purchase time, no real row here.
-    supabaseAdmin
-      .from("expenses")
-      .select("batch_name, amount")
-      .is("deleted_at", null)
-      .not("batch_name", "is", null),
-    // Old batches were bought under the legacy system and never got real
-    // rows in `items` — sales against them only ever landed in the `sales`
-    // table, matched by the letter prefix of their old shoe id (e.g.
-    // "Q16362"), never by items.batch_id. Without this, every legacy batch
-    // shows 0/0 sold here forever, since nothing in `items` ever links to it.
-    fetchAllRows<
-      Pick<SaleRow, "legacy_shoe_id" | "sale_price" | "fee_amount" | "vat_amount" | "income_tax_amount">
-    >((from, to) =>
+  const [{ data: items }, { data: batches }, { data: expenseRows }, sales, { data: employees }] =
+    await Promise.all([
       supabaseAdmin
-        .from("sales")
-        .select("legacy_shoe_id, sale_price, fee_amount, vat_amount, income_tax_amount")
+        .from("items")
+        .select("id, status, price, cost_price, batch_id, created_by, created_at")
+        .is("deleted_at", null),
+      supabaseAdmin
+        .from("batches")
+        .select("id, label, batch_number, purchase_cost, quantity, sales_amount, sold_pairs")
+        .order("batch_number", { ascending: true }),
+      // Batches that predate the real `batches` table — a cost was logged in
+      // `expenses` against a letter label at purchase time, no real row here.
+      supabaseAdmin
+        .from("expenses")
+        .select("batch_name, amount")
         .is("deleted_at", null)
-        .not("legacy_shoe_id", "is", null)
-        .order("created_at", { ascending: false })
-        .range(from, to)
-    ),
-  ]);
+        .not("batch_name", "is", null),
+      // Old batches were bought under the legacy system and never got real
+      // rows in `items` — sales against them only ever landed in the `sales`
+      // table, matched by the letter prefix of their old shoe id (e.g.
+      // "Q16362"), never by items.batch_id. Without this, every legacy batch
+      // shows 0/0 sold here forever, since nothing in `items` ever links to it.
+      fetchAllRows<
+        Pick<SaleRow, "legacy_shoe_id" | "sale_price" | "fee_amount" | "vat_amount" | "income_tax_amount">
+      >((from, to) =>
+        supabaseAdmin
+          .from("sales")
+          .select("legacy_shoe_id, sale_price, fee_amount, vat_amount, income_tax_amount")
+          .is("deleted_at", null)
+          .not("legacy_shoe_id", "is", null)
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
+      supabaseAdmin.from("employees").select("id, full_name"),
+    ]);
+
+  const todayWarsaw = warsawDateString(new Date());
+  const nameByEmployeeId = new Map((employees ?? []).map((e) => [e.id, e.full_name]));
+  const todaysIntakeByEmployee = new Map<string, number>();
+  for (const item of items ?? []) {
+    if (!item.created_by || !item.created_at) continue;
+    if (warsawDateString(new Date(item.created_at)) !== todayWarsaw) continue;
+    todaysIntakeByEmployee.set(
+      item.created_by,
+      (todaysIntakeByEmployee.get(item.created_by) ?? 0) + 1
+    );
+  }
+  const todaysIntakeRows = Array.from(todaysIntakeByEmployee.entries())
+    .map(([employeeId, count]) => ({
+      name: nameByEmployeeId.get(employeeId) ?? "Nieznany",
+      count,
+    }))
+    .sort((a, b) => b.count - a.count);
 
   const rows = items ?? [];
 
@@ -170,6 +198,39 @@ export default async function DashboardPage() {
           <Tile label="W trakcie obróbki" value={processing} />
           <Tile label="Opublikowano" value={published} />
           <Tile label="Sprzedano" value={sold} />
+        </div>
+
+        <div className="flex flex-col gap-[var(--gap-default)]">
+          <h2 className="text-lg font-semibold text-[var(--color-text)]">
+            Dzisiaj: towary przyjęte wg pracownika
+          </h2>
+          <p className={`text-xs ${mutedTextClass}`}>
+            Liczone tylko od teraz — starsze towary nie mają zapisanego, kto je przyjął.
+          </p>
+          <div className={`overflow-x-auto ${cardClass} !p-0`}>
+            <table className="w-full min-w-[320px] text-left text-sm">
+              <tbody>
+                {todaysIntakeRows.map((row) => (
+                  <tr
+                    key={row.name}
+                    className="[&:not(:last-child)]:border-b [&:not(:last-child)]:border-[var(--color-bg)]"
+                  >
+                    <td className="px-4 py-3 text-[var(--color-text)]">{row.name}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-[var(--color-text)]">
+                      {row.count}
+                    </td>
+                  </tr>
+                ))}
+                {todaysIntakeRows.length === 0 && (
+                  <tr>
+                    <td className={`px-4 py-6 text-center text-sm ${mutedTextClass}`}>
+                      Dzisiaj nikt jeszcze nie przyjął towaru.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-[var(--space-md)] sm:grid-cols-3">
