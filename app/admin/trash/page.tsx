@@ -14,7 +14,7 @@ export default async function TrashPage() {
 
   const { data: items } = await supabaseAdmin
     .from("items")
-    .select("id, internal_number, brand, model, size, price, deleted_at, batches(label)")
+    .select("id, internal_number, legacy_number, brand, model, size, price, deleted_at, batches(label)")
     .not("deleted_at", "is", null)
     .order("deleted_at", { ascending: false });
 

@@ -12,6 +12,7 @@ import { generateIntakeEstimate } from "@/lib/ai-price-estimate";
 export type IntakeState = {
   status: "idle" | "success" | "error" | "duplicate";
   internalNumber?: string | number;
+  legacyNumber?: string;
   batchLabel?: string;
   brand?: string;
   size?: string;
@@ -100,7 +101,7 @@ export async function createItem(
           : existing.batches?.label ?? null;
         return {
           status: "duplicate",
-          error: `Towar ze starym numerem „${legacyNumber}” już jest w magazynie: ${formatItemNumber(existingBatchLabel, existing.internal_number)} · ${existing.brand ?? "—"} ${existing.model ?? ""}`.trim(),
+          error: `Towar ze starym numerem „${legacyNumber}” już jest w magazynie: ${formatItemNumber(existingBatchLabel, existing.internal_number, legacyNumber)} · ${existing.brand ?? "—"} ${existing.model ?? ""}`.trim(),
         };
       }
     }
@@ -175,6 +176,7 @@ export async function createItem(
     return {
       status: "success",
       internalNumber: item.internal_number,
+      legacyNumber: legacyNumber || undefined,
       batchLabel: batchLabel || undefined,
       brand,
       size,

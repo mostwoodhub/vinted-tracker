@@ -9,6 +9,7 @@ import { cardClass, mutedTextClass } from "@/lib/ui-classes";
 export type TrashItem = {
   id: string;
   internal_number: number;
+  legacy_number: string | null;
   brand: string | null;
   model: string | null;
   size: string | null;
@@ -57,7 +58,7 @@ export function TrashList({ items }: { items: TrashItem[] }) {
   return (
     <div className="flex flex-col gap-[var(--gap-default)]">
       {items.map((item) => {
-        const label = formatItemNumber(item.batches?.label, item.internal_number);
+        const label = formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number);
         return (
           <div
             key={item.id}

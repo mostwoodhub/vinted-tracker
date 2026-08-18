@@ -6,7 +6,7 @@ import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui
 export default async function PhotoQueuePage() {
   const { data: items } = await supabaseAdmin
     .from("items")
-    .select("id, internal_number, brand, size, batches(label)")
+    .select("id, internal_number, legacy_number, brand, size, batches(label)")
     .eq("status", "received")
     .is("deleted_at", null)
     .order("internal_number", { ascending: true });
@@ -14,6 +14,7 @@ export default async function PhotoQueuePage() {
   const rows = (items ?? []) as unknown as {
     id: string;
     internal_number: number;
+    legacy_number: string | null;
     brand: string | null;
     size: string | null;
     batches: { label: string | null } | null;
@@ -39,7 +40,7 @@ export default async function PhotoQueuePage() {
               >
                 <span className="font-bold text-[var(--color-text)]">
                   📸{" "}
-                  {formatItemNumber(item.batches?.label, item.internal_number)}
+                  {formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}
                 </span>
                 <span className={`text-sm ${mutedTextClass}`}>
                   {[item.brand, item.size].filter(Boolean).join(" · ") || "—"}

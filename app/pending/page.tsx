@@ -20,7 +20,7 @@ export default async function PendingPage() {
   const { data: items } = await supabaseAdmin
     .from("items")
     .select(
-      "id, internal_number, brand, model, size, condition, condition_detail, price, cost_price, status, batches(id, label)"
+      "id, internal_number, legacy_number, brand, model, size, condition, condition_detail, price, cost_price, status, batches(id, label)"
     )
     .in("status", PENDING_STATUSES)
     .is("deleted_at", null)

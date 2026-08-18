@@ -23,6 +23,7 @@ import { inputClass } from "@/lib/ui-classes";
 export type WarehouseCardItem = {
   id: string;
   internal_number: number;
+  legacy_number: string | null;
   brand: string | null;
   model: string | null;
   size: string | null;
@@ -113,7 +114,7 @@ function exportCsv(items: WarehouseCardItem[]) {
     "Status",
   ];
   const rows = items.map((item) => [
-    formatItemNumber(item.batches?.label, item.internal_number),
+    formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number),
     item.brand ?? "",
     item.model ?? "",
     item.size ?? "",
@@ -478,7 +479,8 @@ export function WarehouseCards({
       if (query) {
         const number = formatItemNumber(
           item.batches?.label,
-          item.internal_number
+          item.internal_number,
+          item.legacy_number
         ).toLowerCase();
         const haystack = `${number} ${item.brand ?? ""} ${item.model ?? ""}`.toLowerCase();
         if (!haystack.includes(query)) return false;
@@ -715,7 +717,7 @@ export function WarehouseCards({
                   checked={selectedItems.has(item.id)}
                   onChange={() => toggleItemSelected(item.id)}
                   className="h-4 w-4 shrink-0"
-                  aria-label={`Zaznacz ${formatItemNumber(item.batches?.label, item.internal_number)}`}
+                  aria-label={`Zaznacz ${formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}`}
                 />
               )}
 
@@ -739,7 +741,7 @@ export function WarehouseCards({
                     href={`/items/${item.id}`}
                     className="font-bold text-[var(--color-text)] hover:text-[var(--color-accent-fg)]"
                   >
-                    ✏️ {formatItemNumber(item.batches?.label, item.internal_number)}{" "}
+                    ✏️ {formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}{" "}
                     · {item.brand ?? "—"} {item.model ?? ""}
                   </Link>
                   <span
@@ -791,7 +793,7 @@ export function WarehouseCards({
               {isAdmin && (
                 <ItemDeleteButton
                   itemId={item.id}
-                  label={formatItemNumber(item.batches?.label, item.internal_number)}
+                  label={formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}
                 />
               )}
             </div>

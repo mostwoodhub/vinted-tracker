@@ -24,7 +24,7 @@ export default async function BatchPage({
 
   const { data: items } = await supabaseAdmin
     .from("items")
-    .select("id, internal_number, brand, size, cost_price, status")
+    .select("id, internal_number, legacy_number, brand, size, cost_price, status")
     .eq("batch_id", id)
     .is("deleted_at", null)
     .order("internal_number", { ascending: false });
@@ -74,7 +74,7 @@ export default async function BatchPage({
                       href={`/items/${item.id}`}
                       className="font-medium text-[var(--color-text)] underline-offset-2 hover:underline"
                     >
-                      {formatItemNumber(batch.label, item.internal_number)}
+                      {formatItemNumber(batch.label, item.internal_number, item.legacy_number)}
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-[var(--color-text)]">{item.brand ?? "—"}</td>

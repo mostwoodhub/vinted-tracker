@@ -16,11 +16,17 @@ function batchLabelOf(batches: BatchRel): string | null {
 // sales are for things that were never run through Intake at all), this
 // just makes it visible instead of a silent no-op mismatch.
 export async function getItemStatusByNumber(): Promise<Record<string, string>> {
-  const { data } = await supabaseAdmin.from("items").select("internal_number, status, batches(label)");
+  const { data } = await supabaseAdmin
+    .from("items")
+    .select("internal_number, legacy_number, status, batches(label)");
 
   const map: Record<string, string> = {};
   for (const row of data ?? []) {
-    const number = formatItemNumber(batchLabelOf(row.batches as BatchRel), row.internal_number);
+    const number = formatItemNumber(
+      batchLabelOf(row.batches as BatchRel),
+      row.internal_number,
+      row.legacy_number
+    );
     map[number] = row.status ?? "";
   }
   return map;
@@ -30,12 +36,18 @@ export async function getItemStatusByNumber(): Promise<Record<string, string>> {
 // auto-fill the sales.brand field the moment "Numer obuwia" matches a known
 // warehouse item, so a sale doesn't rely on the employee retyping the brand.
 export async function getItemBrandByNumber(): Promise<Record<string, string>> {
-  const { data } = await supabaseAdmin.from("items").select("internal_number, brand, batches(label)");
+  const { data } = await supabaseAdmin
+    .from("items")
+    .select("internal_number, legacy_number, brand, batches(label)");
 
   const map: Record<string, string> = {};
   for (const row of data ?? []) {
     if (!row.brand) continue;
-    const number = formatItemNumber(batchLabelOf(row.batches as BatchRel), row.internal_number);
+    const number = formatItemNumber(
+      batchLabelOf(row.batches as BatchRel),
+      row.internal_number,
+      row.legacy_number
+    );
     map[number] = row.brand;
   }
   return map;

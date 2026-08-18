@@ -61,7 +61,7 @@ function printLabel(state: IntakeState) {
   const defectsLine = escapeHtml(state.defectsSummary || "Brak wad");
 
   const displayNumber = escapeHtml(
-    formatItemNumber(state.batchLabel, state.internalNumber ?? "")
+    formatItemNumber(state.batchLabel, state.internalNumber ?? "", state.legacyNumber)
   );
 
   printWindow.document.write(`<!doctype html>
@@ -423,9 +423,9 @@ export function IntakeForm({
           <div>
             <p className="font-medium">Towar przyjęty</p>
             <p>
-              Numer wewnętrzny:{" "}
+              Numer:{" "}
               <strong>
-                {formatItemNumber(state.batchLabel, state.internalNumber ?? "")}
+                {formatItemNumber(state.batchLabel, state.internalNumber ?? "", state.legacyNumber)}
               </strong>
             </p>
           </div>

@@ -174,7 +174,7 @@ export default async function ItemPage({
     <div className={pageWrapClass}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-[var(--space-xl)] px-6 py-12">
         <h1 className={headingClass}>
-          Towar {formatItemNumber(item.batches?.label, item.internal_number)}
+          Towar {formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}
         </h1>
 
         <StatusTrack status={item.status} />
@@ -329,7 +329,7 @@ export default async function ItemPage({
         {roles.has("admin") && (
           <DeleteItemButton
             itemId={item.id}
-            label={formatItemNumber(item.batches?.label, item.internal_number)}
+            label={formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}
           />
         )}
       </div>

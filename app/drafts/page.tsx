@@ -6,6 +6,7 @@ import { headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 type ItemWithListings = {
   id: string;
   internal_number: number;
+  legacy_number: string | null;
   brand: string | null;
   model: string | null;
   size: string | null;
@@ -18,7 +19,7 @@ export default async function DraftsPage() {
   const { data: items } = await supabaseAdmin
     .from("items")
     .select(
-      "id, internal_number, brand, model, size, price, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at))"
+      "id, internal_number, legacy_number, brand, model, size, price, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at))"
     )
     .eq("status", "ai_card_ready")
     .is("deleted_at", null)
