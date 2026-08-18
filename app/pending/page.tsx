@@ -17,17 +17,27 @@ export default async function PendingPage() {
   if (isIntakeOnly(roles)) redirect("/intake");
   const isAdmin = roles.has("admin");
 
-  const { data: items } = await supabaseAdmin
-    .from("items")
-    .select(
-      "id, internal_number, legacy_number, brand, model, size, condition, condition_detail, price, cost_price, status, batches(id, label)"
-    )
-    .in("status", PENDING_STATUSES)
-    .is("deleted_at", null)
-    .order("internal_number", { ascending: false });
+  // Independent of each other — fire together instead of one after another.
+  const [{ data: items }, { data: batchRows }] = await Promise.all([
+    supabaseAdmin
+      .from("items")
+      .select(
+        "id, internal_number, legacy_number, brand, model, size, condition, condition_detail, price, cost_price, status, batches(id, label)"
+      )
+      .in("status", PENDING_STATUSES)
+      .is("deleted_at", null)
+      .order("internal_number", { ascending: false }),
+    // Every batch that exists, not just ones items happen to be linked to
+    // (most items aren't linked to a batch yet) — otherwise the Partia
+    // filter has nothing to show.
+    supabaseAdmin.from("batches").select("label").order("label", { ascending: true }),
+  ]);
 
   const rows = (items ?? []) as unknown as Omit<WarehouseCardItem, "photoUrl">[];
   const ids = rows.map((row) => row.id);
+  const allBatchLabels = (batchRows ?? [])
+    .map((b) => b.label)
+    .filter((v): v is string => !!v);
 
   async function loadPhotoUrls(): Promise<Map<string, string>> {
     const photoUrlByItem = new Map<string, string>();
@@ -108,7 +118,12 @@ export default async function PendingPage() {
     <div className={pageWrapClass}>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-[var(--space-lg)] px-6 py-12">
         <h1 className={headingClass}>Oczekujące</h1>
-        <WarehouseCards items={cardItems} defaultStatusFilter="" isAdmin={isAdmin} />
+        <WarehouseCards
+          items={cardItems}
+          defaultStatusFilter=""
+          isAdmin={isAdmin}
+          allBatchLabels={allBatchLabels}
+        />
       </div>
     </div>
   );

@@ -356,10 +356,17 @@ export function WarehouseCards({
   items,
   defaultStatusFilter = "ready",
   isAdmin = false,
+  allBatchLabels,
 }: {
   items: WarehouseCardItem[];
   defaultStatusFilter?: string;
   isAdmin?: boolean;
+  // Every batch that exists in the system, not just the ones currently
+  // represented among loaded items — most items aren't linked to a batch
+  // yet (batch_id is set per-item, separately from a batch simply
+  // existing), so deriving options purely from `items` left the Partia
+  // filter empty even though batches were there to filter by.
+  allBatchLabels?: string[];
 }) {
   const brands = useMemo(
     () =>
@@ -375,17 +382,16 @@ export function WarehouseCards({
       ).sort(),
     [items]
   );
-  const batchLabels = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          items
-            .map((item) => item.batches?.label)
-            .filter((v): v is string => !!v)
-        )
-      ).sort(),
-    [items]
-  );
+  const batchLabels = useMemo(() => {
+    if (allBatchLabels) return allBatchLabels;
+    return Array.from(
+      new Set(
+        items
+          .map((item) => item.batches?.label)
+          .filter((v): v is string => !!v)
+      )
+    ).sort();
+  }, [items, allBatchLabels]);
 
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState(defaultStatusFilter);
