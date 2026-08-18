@@ -25,9 +25,10 @@ export default async function WarehousePage() {
   const rows = (items ?? []) as unknown as Omit<WarehouseCardItem, "photoUrl">[];
   const ids = rows.map((row) => row.id);
 
-  const photoUrlByItem = new Map<string, string>();
+  async function loadPhotoUrls(): Promise<Map<string, string>> {
+    const photoUrlByItem = new Map<string, string>();
+    if (ids.length === 0) return photoUrlByItem;
 
-  if (ids.length > 0) {
     const { data: photos } = await supabaseAdmin
       .from("item_photos")
       .select("item_id, storage_path, is_working_photo")
@@ -54,26 +55,31 @@ export default async function WarehousePage() {
     }
 
     const paths = Array.from(pathByItem.values());
-    if (paths.length > 0) {
-      const { data: signed } = await supabaseAdmin.storage
-        .from("item-photos")
-        .createSignedUrls(paths, 60 * 60);
+    if (paths.length === 0) return photoUrlByItem;
 
-      const signedUrlByPath = new Map<string, string>();
-      for (const entry of signed ?? []) {
-        if (entry.signedUrl) {
-          signedUrlByPath.set(entry.path ?? "", entry.signedUrl);
-        }
-      }
+    const { data: signed } = await supabaseAdmin.storage
+      .from("item-photos")
+      .createSignedUrls(paths, 60 * 60);
 
-      for (const [itemId, path] of pathByItem) {
-        const url = signedUrlByPath.get(path);
-        if (url) photoUrlByItem.set(itemId, url);
+    const signedUrlByPath = new Map<string, string>();
+    for (const entry of signed ?? []) {
+      if (entry.signedUrl) {
+        signedUrlByPath.set(entry.path ?? "", entry.signedUrl);
       }
     }
+
+    for (const [itemId, path] of pathByItem) {
+      const url = signedUrlByPath.get(path);
+      if (url) photoUrlByItem.set(itemId, url);
+    }
+    return photoUrlByItem;
   }
 
-  const lastActivityByItem = await fetchLastActivityByItem(ids);
+  // Neither depends on the other's result — only on `ids` — so run together.
+  const [photoUrlByItem, lastActivityByItem] = await Promise.all([
+    loadPhotoUrls(),
+    fetchLastActivityByItem(ids),
+  ]);
   // This is a Server Component — it runs once per request on the server,
   // not repeatedly on the client, so Date.now() here isn't subject to the
   // client re-render purity concerns the react-hooks/purity rule targets.

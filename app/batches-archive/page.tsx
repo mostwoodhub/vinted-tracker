@@ -15,26 +15,40 @@ export default async function BatchesArchivePage() {
     redirect("/warehouse");
   }
 
-  // Cost source for batches that predate the real `batches` table — an
-  // amount was logged in `expenses` against a letter label at purchase
-  // time, with no real batch row ever created for it.
-  const { data: expenseRows } = await supabaseAdmin
-    .from("expenses")
-    .select("batch_name, amount")
-    .is("deleted_at", null)
-    .not("batch_name", "is", null);
-
-  const sales = await fetchAllRows<
-    Pick<SaleRow, "legacy_shoe_id" | "sale_price" | "fee_amount" | "vat_amount" | "income_tax_amount">
-  >((from, to) =>
-    supabaseAdmin
-      .from("sales")
-      .select("legacy_shoe_id, sale_price, fee_amount, vat_amount, income_tax_amount")
-      .is("deleted_at", null)
-      .not("legacy_shoe_id", "is", null)
-      .order("created_at", { ascending: false })
-      .range(from, to)
-  );
+  // Independent of each other — fire together instead of one after another.
+  const [{ data: expenseRows }, sales, { data: realBatchesRaw }, { data: itemBatchLinks }] =
+    await Promise.all([
+      // Cost source for batches that predate the real `batches` table — an
+      // amount was logged in `expenses` against a letter label at purchase
+      // time, with no real batch row ever created for it.
+      supabaseAdmin
+        .from("expenses")
+        .select("batch_name, amount")
+        .is("deleted_at", null)
+        .not("batch_name", "is", null),
+      fetchAllRows<
+        Pick<SaleRow, "legacy_shoe_id" | "sale_price" | "fee_amount" | "vat_amount" | "income_tax_amount">
+      >((from, to) =>
+        supabaseAdmin
+          .from("sales")
+          .select("legacy_shoe_id, sale_price, fee_amount, vat_amount, income_tax_amount")
+          .is("deleted_at", null)
+          .not("legacy_shoe_id", "is", null)
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
+      supabaseAdmin
+        .from("batches")
+        .select(
+          "id, label, batch_number, purchase_cost, purchase_location, quantity, sales_amount, sold_pairs"
+        )
+        .order("batch_number", { ascending: true }),
+      supabaseAdmin
+        .from("items")
+        .select("batch_id, status")
+        .not("batch_id", "is", null)
+        .is("deleted_at", null),
+    ]);
 
   const legacyCostByLabel = new Map<string, number>();
   for (const row of expenseRows ?? []) {
@@ -44,19 +58,6 @@ export default async function BatchesArchivePage() {
       (legacyCostByLabel.get(row.batch_name) ?? 0) + (row.amount ?? 0)
     );
   }
-
-  const { data: realBatchesRaw } = await supabaseAdmin
-    .from("batches")
-    .select(
-      "id, label, batch_number, purchase_cost, purchase_location, quantity, sales_amount, sold_pairs"
-    )
-    .order("batch_number", { ascending: true });
-
-  const { data: itemBatchLinks } = await supabaseAdmin
-    .from("items")
-    .select("batch_id, status")
-    .not("batch_id", "is", null)
-    .is("deleted_at", null);
 
   const itemCountByBatch = new Map<string, number>();
   const soldCountByBatch = new Map<string, number>();

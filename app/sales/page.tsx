@@ -13,32 +13,29 @@ export default async function SalesPage() {
     redirect(isIntakeOnly(roles) ? "/intake" : "/warehouse");
   }
 
-  const sales = await fetchAllRows<SaleRow>((from, to) =>
+  const [sales, expenses, { data: profiles }, { data: accountRows }] = await Promise.all([
+    fetchAllRows<SaleRow>((from, to) =>
+      supabaseAdmin
+        .from("sales")
+        .select("*")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .range(from, to)
+    ),
+    fetchAllRows<ExpenseRow>((from, to) =>
+      supabaseAdmin
+        .from("expenses")
+        .select("expense_date, category, amount, batch_name")
+        .is("deleted_at", null)
+        .order("expense_date", { ascending: false })
+        .range(from, to)
+    ),
+    supabaseAdmin.from("sales_profiles_archive").select("id, email, display_name"),
     supabaseAdmin
-      .from("sales")
-      .select("*")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .range(from, to)
-  );
-
-  const expenses = await fetchAllRows<ExpenseRow>((from, to) =>
-    supabaseAdmin
-      .from("expenses")
-      .select("expense_date, category, amount, batch_name")
-      .is("deleted_at", null)
-      .order("expense_date", { ascending: false })
-      .range(from, to)
-  );
-
-  const { data: profiles } = await supabaseAdmin
-    .from("sales_profiles_archive")
-    .select("id, email, display_name");
-
-  const { data: accountRows } = await supabaseAdmin
-    .from("sales_accounts_archive")
-    .select("name")
-    .order("sort_order", { ascending: true });
+      .from("sales_accounts_archive")
+      .select("name")
+      .order("sort_order", { ascending: true }),
+  ]);
   const accountNames = (accountRows ?? []).map((row) => row.name).filter(Boolean) as string[];
 
   return (

@@ -37,10 +37,40 @@ export default async function DashboardPage() {
     redirect("/warehouse");
   }
 
-  const { data: items } = await supabaseAdmin
-    .from("items")
-    .select("id, status, price, cost_price, batch_id")
-    .is("deleted_at", null);
+  // Independent of each other — fire together instead of one after another.
+  const [{ data: items }, { data: batches }, { data: expenseRows }, sales] = await Promise.all([
+    supabaseAdmin
+      .from("items")
+      .select("id, status, price, cost_price, batch_id")
+      .is("deleted_at", null),
+    supabaseAdmin
+      .from("batches")
+      .select("id, label, batch_number, purchase_cost, quantity, sales_amount, sold_pairs")
+      .order("batch_number", { ascending: true }),
+    // Batches that predate the real `batches` table — a cost was logged in
+    // `expenses` against a letter label at purchase time, no real row here.
+    supabaseAdmin
+      .from("expenses")
+      .select("batch_name, amount")
+      .is("deleted_at", null)
+      .not("batch_name", "is", null),
+    // Old batches were bought under the legacy system and never got real
+    // rows in `items` — sales against them only ever landed in the `sales`
+    // table, matched by the letter prefix of their old shoe id (e.g.
+    // "Q16362"), never by items.batch_id. Without this, every legacy batch
+    // shows 0/0 sold here forever, since nothing in `items` ever links to it.
+    fetchAllRows<
+      Pick<SaleRow, "legacy_shoe_id" | "sale_price" | "fee_amount" | "vat_amount" | "income_tax_amount">
+    >((from, to) =>
+      supabaseAdmin
+        .from("sales")
+        .select("legacy_shoe_id, sale_price, fee_amount, vat_amount, income_tax_amount")
+        .is("deleted_at", null)
+        .not("legacy_shoe_id", "is", null)
+        .order("created_at", { ascending: false })
+        .range(from, to)
+    ),
+  ]);
 
   const rows = items ?? [];
 
@@ -62,19 +92,6 @@ export default async function DashboardPage() {
   );
   const projectedRevenueDiscounted = projectedRevenue * 0.9;
 
-  const { data: batches } = await supabaseAdmin
-    .from("batches")
-    .select("id, label, batch_number, purchase_cost, quantity, sales_amount, sold_pairs")
-    .order("batch_number", { ascending: true });
-
-  // Batches that predate the real `batches` table — a cost was logged in
-  // `expenses` against a letter label at purchase time, no real row here.
-  const { data: expenseRows } = await supabaseAdmin
-    .from("expenses")
-    .select("batch_name, amount")
-    .is("deleted_at", null)
-    .not("batch_name", "is", null);
-
   const legacyCostByLabel = new Map<string, number>();
   for (const row of expenseRows ?? []) {
     if (!row.batch_name) continue;
@@ -86,23 +103,6 @@ export default async function DashboardPage() {
   for (const b of batches ?? []) {
     if (b.label) legacyCostByLabel.delete(b.label);
   }
-
-  // Old batches were bought under the legacy system and never got real rows
-  // in `items` — sales against them only ever landed in the `sales` table,
-  // matched by the letter prefix of their old shoe id (e.g. "Q16362"), never
-  // by items.batch_id. Without this, every legacy batch shows 0/0 sold here
-  // forever, since nothing in `items` ever links to it.
-  const sales = await fetchAllRows<
-    Pick<SaleRow, "legacy_shoe_id" | "sale_price" | "fee_amount" | "vat_amount" | "income_tax_amount">
-  >((from, to) =>
-    supabaseAdmin
-      .from("sales")
-      .select("legacy_shoe_id, sale_price, fee_amount, vat_amount, income_tax_amount")
-      .is("deleted_at", null)
-      .not("legacy_shoe_id", "is", null)
-      .order("created_at", { ascending: false })
-      .range(from, to)
-  );
 
   const batchRows = (batches ?? []).map((batch) => {
     const batchItems = rows.filter((item) => item.batch_id === batch.id);

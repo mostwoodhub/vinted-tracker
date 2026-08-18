@@ -16,22 +16,21 @@ type ItemWithListings = {
 };
 
 export default async function DraftsPage() {
-  const { data: items } = await supabaseAdmin
-    .from("items")
-    .select(
-      "id, internal_number, legacy_number, brand, model, size, price, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at))"
-    )
-    .eq("status", "ai_card_ready")
-    .is("deleted_at", null)
-    .order("internal_number", { ascending: false });
+  // Independent of each other — fire together instead of one after another.
+  const [{ data: items }, { data: accountRows }] = await Promise.all([
+    supabaseAdmin
+      .from("items")
+      .select(
+        "id, internal_number, legacy_number, brand, model, size, price, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at))"
+      )
+      .eq("status", "ai_card_ready")
+      .is("deleted_at", null)
+      .order("internal_number", { ascending: false }),
+    supabaseAdmin.from("sales_accounts_archive").select("name").order("sort_order", { ascending: true }),
+  ]);
 
   const rows = (items ?? []) as unknown as ItemWithListings[];
   const itemIds = rows.map((r) => r.id);
-
-  const { data: accountRows } = await supabaseAdmin
-    .from("sales_accounts_archive")
-    .select("name")
-    .order("sort_order", { ascending: true });
   const accountNames = (accountRows ?? []).map((a) => a.name).filter(Boolean) as string[];
 
   const photoSetsByItem = new Map<string, { id: string; label: string | null }[]>();

@@ -55,13 +55,33 @@ export default async function ItemPage({
 }) {
   const { id } = await params;
 
-  const { data: item } = await supabaseAdmin
-    .from("items")
-    .select(
-      "*, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at))"
-    )
-    .eq("id", id)
-    .single();
+  // None of these depend on each other's result — only on the route `id`,
+  // already known — so fire them together instead of one after another.
+  const [{ data: item }, employee, { data: photos }, { data: photoSetsRaw }, { data: accountRows }] =
+    await Promise.all([
+      supabaseAdmin
+        .from("items")
+        .select(
+          "*, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at))"
+        )
+        .eq("id", id)
+        .single(),
+      getCurrentEmployee(),
+      supabaseAdmin
+        .from("item_photos")
+        .select("id, storage_path, is_working_photo, photo_set_id")
+        .eq("item_id", id)
+        .order("uploaded_at", { ascending: true }),
+      supabaseAdmin
+        .from("item_photo_sets")
+        .select("id, label, account_name, sort_order")
+        .eq("item_id", id)
+        .order("sort_order", { ascending: true }),
+      supabaseAdmin
+        .from("sales_accounts_archive")
+        .select("name")
+        .order("sort_order", { ascending: true }),
+    ]);
 
   if (!item) notFound();
 
@@ -71,15 +91,8 @@ export default async function ItemPage({
     l.publications.map((p) => ({ platform: l.platform, accountName: p.accountName }))
   );
 
-  const employee = await getCurrentEmployee();
   const roles = getEffectiveRoles(employee);
   const canEdit = roles.has("admin") || roles.has("publisher");
-
-  const { data: photos } = await supabaseAdmin
-    .from("item_photos")
-    .select("id, storage_path, is_working_photo, photo_set_id")
-    .eq("item_id", id)
-    .order("uploaded_at", { ascending: true });
 
   const photoRows = (photos ?? []) as ItemPhotoWithSet[];
 
@@ -101,12 +114,6 @@ export default async function ItemPage({
   // sets, or someone who doesn't need multiple accounts/backgrounds).
   const finalPhotos = photoRows.filter((p) => !p.is_working_photo && !p.photo_set_id);
 
-  const { data: photoSetsRaw } = await supabaseAdmin
-    .from("item_photo_sets")
-    .select("id, label, account_name, sort_order")
-    .eq("item_id", id)
-    .order("sort_order", { ascending: true });
-
   const photoSets: PhotoSetData[] = (photoSetsRaw ?? []).map((s) => ({
     id: s.id,
     label: s.label,
@@ -123,10 +130,6 @@ export default async function ItemPage({
     photosBySet.set(photo.photo_set_id, list);
   }
 
-  const { data: accountRows } = await supabaseAdmin
-    .from("sales_accounts_archive")
-    .select("name")
-    .order("sort_order", { ascending: true });
   const accountNames = (accountRows ?? []).map((a) => a.name).filter(Boolean) as string[];
 
   const showListingsEditor = AI_CARD_READY_OR_LATER.includes(item.status);

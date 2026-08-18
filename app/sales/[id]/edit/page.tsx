@@ -22,26 +22,19 @@ export default async function EditSalePage({
     redirect("/warehouse");
   }
 
-  const { data: sale } = await supabaseAdmin
-    .from("sales")
-    .select("*")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .maybeSingle();
+  // Independent of each other — fire together instead of one after another.
+  const [{ data: sale }, { data }, itemStatusByNumber, itemBrandByNumber, brands] =
+    await Promise.all([
+      supabaseAdmin.from("sales").select("*").eq("id", id).is("deleted_at", null).maybeSingle(),
+      supabaseAdmin.from("sales_accounts_archive").select("name").order("sort_order", { ascending: true }),
+      getItemStatusByNumber(),
+      getItemBrandByNumber(),
+      getDistinctValues("items", "brand"),
+    ]);
 
   if (!sale) notFound();
 
-  const { data } = await supabaseAdmin
-    .from("sales_accounts_archive")
-    .select("name")
-    .order("sort_order", { ascending: true });
-
   const accountNames = (data ?? []).map((row) => row.name).filter(Boolean) as string[];
-  const [itemStatusByNumber, itemBrandByNumber, brands] = await Promise.all([
-    getItemStatusByNumber(),
-    getItemBrandByNumber(),
-    getDistinctValues("items", "brand"),
-  ]);
 
   return (
     <div className={pageWrapClass}>

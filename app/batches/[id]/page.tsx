@@ -12,22 +12,24 @@ export default async function BatchPage({
 }) {
   const { id } = await params;
 
-  const { data: batch } = await supabaseAdmin
-    .from("batches")
-    .select(
-      "id, label, batch_number, purchase_cost, purchase_location, quantity, sales_amount, sold_pairs"
-    )
-    .eq("id", id)
-    .single();
+  // Both only need `id`, not each other's result — fire together.
+  const [{ data: batch }, { data: items }] = await Promise.all([
+    supabaseAdmin
+      .from("batches")
+      .select(
+        "id, label, batch_number, purchase_cost, purchase_location, quantity, sales_amount, sold_pairs"
+      )
+      .eq("id", id)
+      .single(),
+    supabaseAdmin
+      .from("items")
+      .select("id, internal_number, legacy_number, brand, size, cost_price, status")
+      .eq("batch_id", id)
+      .is("deleted_at", null)
+      .order("internal_number", { ascending: false }),
+  ]);
 
   if (!batch) notFound();
-
-  const { data: items } = await supabaseAdmin
-    .from("items")
-    .select("id, internal_number, legacy_number, brand, size, cost_price, status")
-    .eq("batch_id", id)
-    .is("deleted_at", null)
-    .order("internal_number", { ascending: false });
 
   const rows = items ?? [];
   const unpricedCount = rows.filter((item) => item.cost_price == null).length;

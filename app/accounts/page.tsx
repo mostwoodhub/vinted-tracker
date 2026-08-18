@@ -14,18 +14,19 @@ export default async function AccountsPage() {
     redirect("/warehouse");
   }
 
-  const { data: accountsRaw } = await supabaseAdmin
-    .from("sales_accounts_archive")
-    .select("id, name, sort_order")
-    .order("sort_order", { ascending: true });
-
-  const sales = await fetchAllRows<{ account_name: string | null }>((from, to) =>
+  const [{ data: accountsRaw }, sales] = await Promise.all([
     supabaseAdmin
-      .from("sales")
-      .select("account_name")
-      .is("deleted_at", null)
-      .range(from, to)
-  );
+      .from("sales_accounts_archive")
+      .select("id, name, sort_order")
+      .order("sort_order", { ascending: true }),
+    fetchAllRows<{ account_name: string | null }>((from, to) =>
+      supabaseAdmin
+        .from("sales")
+        .select("account_name")
+        .is("deleted_at", null)
+        .range(from, to)
+    ),
+  ]);
 
   const countByName = new Map<string, number>();
   for (const sale of sales) {

@@ -15,39 +15,36 @@ export default async function StatisticsPage() {
     redirect("/warehouse");
   }
 
-  const sales = await fetchAllRows<SaleRow>((from, to) =>
-    supabaseAdmin
-      .from("sales")
-      .select("*")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .range(from, to)
-  );
-
-  const expenses = await fetchAllRows<ExpenseRow>((from, to) =>
-    supabaseAdmin
-      .from("expenses")
-      .select("expense_date, category, amount, batch_name")
-      .is("deleted_at", null)
-      .order("expense_date", { ascending: false })
-      .range(from, to)
-  );
-
-  const { data: profiles } = await supabaseAdmin
-    .from("sales_profiles_archive")
-    .select("id, email, display_name");
-
-  const { data: realBatches } = await supabaseAdmin
-    .from("batches")
-    .select("label, purchase_cost, sales_amount");
+  // Independent of each other — fire together instead of waiting on each
+  // one's round trip before starting the next.
+  const [sales, expenses, { data: profiles }, { data: realBatches }, { data: itemRows }] =
+    await Promise.all([
+      fetchAllRows<SaleRow>((from, to) =>
+        supabaseAdmin
+          .from("sales")
+          .select("*")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllRows<ExpenseRow>((from, to) =>
+        supabaseAdmin
+          .from("expenses")
+          .select("expense_date, category, amount, batch_name")
+          .is("deleted_at", null)
+          .order("expense_date", { ascending: false })
+          .range(from, to)
+      ),
+      supabaseAdmin.from("sales_profiles_archive").select("id, email, display_name"),
+      supabaseAdmin.from("batches").select("label, purchase_cost, sales_amount"),
+      // Includes deleted items too — matching is about historical linkage
+      // for reporting, not current warehouse state.
+      supabaseAdmin
+        .from("items")
+        .select("internal_number, legacy_number, brand, size, batches(label)"),
+    ]);
 
   const batchPayback = computeBatchPayback(sales, expenses, realBatches ?? []);
-
-  // Includes deleted items too — matching is about historical linkage for
-  // reporting, not current warehouse state.
-  const { data: itemRows } = await supabaseAdmin
-    .from("items")
-    .select("internal_number, legacy_number, brand, size, batches(label)");
 
   const items: MatchableItem[] = (itemRows ?? []).map((row) => {
     const batches = row.batches as

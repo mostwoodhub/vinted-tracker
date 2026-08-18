@@ -13,27 +13,25 @@ export default async function ChartsPage() {
     redirect("/warehouse");
   }
 
-  const sales = await fetchAllRows<SaleRow>((from, to) =>
-    supabaseAdmin
-      .from("sales")
-      .select("*")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .range(from, to)
-  );
-
-  const expenses = await fetchAllRows<ExpenseRow>((from, to) =>
-    supabaseAdmin
-      .from("expenses")
-      .select("expense_date, category, amount, batch_name")
-      .is("deleted_at", null)
-      .order("expense_date", { ascending: false })
-      .range(from, to)
-  );
-
-  const { data: profiles } = await supabaseAdmin
-    .from("sales_profiles_archive")
-    .select("id, email, display_name");
+  const [sales, expenses, { data: profiles }] = await Promise.all([
+    fetchAllRows<SaleRow>((from, to) =>
+      supabaseAdmin
+        .from("sales")
+        .select("*")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .range(from, to)
+    ),
+    fetchAllRows<ExpenseRow>((from, to) =>
+      supabaseAdmin
+        .from("expenses")
+        .select("expense_date, category, amount, batch_name")
+        .is("deleted_at", null)
+        .order("expense_date", { ascending: false })
+        .range(from, to)
+    ),
+    supabaseAdmin.from("sales_profiles_archive").select("id, email, display_name"),
+  ]);
 
   return (
     <ChartsView
