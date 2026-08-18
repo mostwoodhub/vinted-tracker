@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
+import { fetchAllRows } from "@/lib/fetch-all";
+import { computeLinkedSales } from "@/lib/batch-stats";
+import type { SaleRow } from "@/lib/sales-types";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
 const PROCESSING_STATUSES = [
@@ -61,17 +64,59 @@ export default async function DashboardPage() {
 
   const { data: batches } = await supabaseAdmin
     .from("batches")
-    .select("id, label, batch_number, purchase_cost")
+    .select("id, label, batch_number, purchase_cost, quantity, sales_amount, sold_pairs")
     .order("batch_number", { ascending: true });
+
+  // Batches that predate the real `batches` table — a cost was logged in
+  // `expenses` against a letter label at purchase time, no real row here.
+  const { data: expenseRows } = await supabaseAdmin
+    .from("expenses")
+    .select("batch_name, amount")
+    .is("deleted_at", null)
+    .not("batch_name", "is", null);
+
+  const legacyCostByLabel = new Map<string, number>();
+  for (const row of expenseRows ?? []) {
+    if (!row.batch_name) continue;
+    legacyCostByLabel.set(
+      row.batch_name,
+      (legacyCostByLabel.get(row.batch_name) ?? 0) + (row.amount ?? 0)
+    );
+  }
+  for (const b of batches ?? []) {
+    if (b.label) legacyCostByLabel.delete(b.label);
+  }
+
+  // Old batches were bought under the legacy system and never got real rows
+  // in `items` — sales against them only ever landed in the `sales` table,
+  // matched by the letter prefix of their old shoe id (e.g. "Q16362"), never
+  // by items.batch_id. Without this, every legacy batch shows 0/0 sold here
+  // forever, since nothing in `items` ever links to it.
+  const sales = await fetchAllRows<
+    Pick<SaleRow, "legacy_shoe_id" | "sale_price" | "fee_amount" | "vat_amount" | "income_tax_amount">
+  >((from, to) =>
+    supabaseAdmin
+      .from("sales")
+      .select("legacy_shoe_id, sale_price, fee_amount, vat_amount, income_tax_amount")
+      .is("deleted_at", null)
+      .not("legacy_shoe_id", "is", null)
+      .order("created_at", { ascending: false })
+      .range(from, to)
+  );
 
   const batchRows = (batches ?? []).map((batch) => {
     const batchItems = rows.filter((item) => item.batch_id === batch.id);
-    const soldItems = batchItems.filter((item) => item.status === "sold");
-    const remainingCount = batchItems.length - soldItems.length;
-    const soldRevenue = soldItems.reduce(
-      (sum, item) => sum + (item.price ?? 0),
-      0
-    );
+    const soldItemsCount = batchItems.filter((item) => item.status === "sold").length;
+
+    const linked = batch.label
+      ? computeLinkedSales(sales as SaleRow[], batch.label)
+      : { amount: 0, count: 0 };
+
+    const totalCount = Math.max(batch.quantity ?? 0, batchItems.length);
+    const manualPlusLinkedSold = (batch.sold_pairs ?? 0) + linked.count;
+    const soldCount = Math.max(soldItemsCount, manualPlusLinkedSold);
+    const remainingCount = Math.max(0, totalCount - soldCount);
+    const soldRevenue = (batch.sales_amount ?? 0) + linked.amount;
 
     const purchaseCost = batch.purchase_cost;
     const breakEven =
@@ -82,16 +127,38 @@ export default async function DashboardPage() {
           : { reached: false, amount: purchaseCost - soldRevenue };
 
     return {
-      id: batch.id,
+      id: batch.id as string | null,
       label: batch.label ?? String(batch.batch_number),
       purchaseCost,
-      totalCount: batchItems.length,
-      soldCount: soldItems.length,
+      totalCount,
+      soldCount,
       remainingCount,
       soldRevenue,
       breakEven,
     };
   });
+
+  const legacyOnlyRows = Array.from(legacyCostByLabel.entries()).map(([label, cost]) => {
+    const linked = computeLinkedSales(sales as SaleRow[], label);
+    const breakEven =
+      linked.amount >= cost
+        ? { reached: true, amount: linked.amount - cost }
+        : { reached: false, amount: cost - linked.amount };
+    return {
+      id: null as string | null,
+      label,
+      purchaseCost: cost,
+      totalCount: linked.count,
+      soldCount: linked.count,
+      remainingCount: 0,
+      soldRevenue: linked.amount,
+      breakEven,
+    };
+  });
+
+  const allBatchRows = [...batchRows, ...legacyOnlyRows].sort((a, b) =>
+    a.label.localeCompare(b.label)
+  );
 
   return (
     <div className={pageWrapClass}>
@@ -142,15 +209,19 @@ export default async function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {batchRows.map((batch) => (
+                {allBatchRows.map((batch) => (
                   <tr
-                    key={batch.id}
+                    key={batch.id ?? batch.label}
                     className="[&:not(:last-child)]:border-b [&:not(:last-child)]:border-[var(--color-bg)]"
                   >
                     <td className="px-4 py-3 font-medium text-[var(--color-text)]">
-                      <Link href={`/batches/${batch.id}`} className="underline-offset-2 hover:underline">
-                        {batch.label}
-                      </Link>
+                      {batch.id ? (
+                        <Link href={`/batches/${batch.id}`} className="underline-offset-2 hover:underline">
+                          {batch.label}
+                        </Link>
+                      ) : (
+                        batch.label
+                      )}
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text)]">
                       {batch.purchaseCost != null
@@ -179,7 +250,7 @@ export default async function DashboardPage() {
                   </tr>
                 ))}
 
-                {batchRows.length === 0 && (
+                {allBatchRows.length === 0 && (
                   <tr>
                     <td colSpan={5} className={`px-4 py-6 text-center text-sm ${mutedTextClass}`}>
                       Brak partii.
