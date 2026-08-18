@@ -151,6 +151,7 @@ export async function updateItem(
   const model = String(formData.get("model") ?? "").trim();
   const size = String(formData.get("size") ?? "").trim();
   const batchLabel = String(formData.get("batchLabel") ?? "").trim();
+  const legacyNumber = String(formData.get("legacyNumber") ?? "").trim();
   const condition = String(formData.get("condition") ?? "").trim();
   const priceRaw = String(formData.get("price") ?? "").trim();
   const customDefect = String(formData.get("customDefect") ?? "").trim();
@@ -195,6 +196,7 @@ export async function updateItem(
         model: model || null,
         size,
         batch_id: batchId,
+        legacy_number: legacyNumber || null,
         condition: conditionValue,
         condition_detail: conditionDetail,
         defects,

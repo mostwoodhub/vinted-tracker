@@ -261,6 +261,7 @@ export default async function ItemPage({
           <Field label="Model" value={item.model ?? "—"} />
           <Field label="Rozmiar" value={item.size ?? "—"} />
           <Field label="Partia" value={item.batches?.label ?? "—"} />
+          <Field label="Stary numer" value={item.legacy_number ?? "—"} />
           <Field label="Stan" value={item.condition ?? "—"} />
           <Field label="Szczegół stanu" value={item.condition_detail ?? "—"} />
           <Field
@@ -357,6 +358,7 @@ export default async function ItemPage({
             defects={item.defects ?? []}
             price={item.price}
             batchLabel={item.batches?.label ?? null}
+            legacyNumber={item.legacy_number}
           />
         )}
 

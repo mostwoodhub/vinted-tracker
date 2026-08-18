@@ -46,6 +46,7 @@ type EditItemFormProps = {
   defects: string[];
   price: number | null;
   batchLabel: string | null;
+  legacyNumber: string | null;
 };
 
 export function EditItemForm({
@@ -58,6 +59,7 @@ export function EditItemForm({
   defects,
   price,
   batchLabel,
+  legacyNumber,
 }: EditItemFormProps) {
   const [state, formAction] = useActionState(updateItem, initialState);
   const [condition, setCondition] = useState(initialCondition ?? "");
@@ -113,6 +115,16 @@ export function EditItemForm({
             name="batchLabel"
             type="text"
             defaultValue={batchLabel ?? ""}
+            className={inputClass}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-[var(--color-text)]">Stary numer</span>
+          <input
+            name="legacyNumber"
+            type="text"
+            defaultValue={legacyNumber ?? ""}
             className={inputClass}
           />
         </label>
