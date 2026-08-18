@@ -99,6 +99,11 @@ function transformSale(row) {
   };
 }
 
+// Optional: after importing, print a per-day old-vs-new row count for any
+// date >= this, so gaps (like "was the 12th fully transferred?") are
+// visible at a glance instead of trusting the diff count blindly.
+const REPORT_FROM_DATE = process.env.REPORT_FROM_DATE || null;
+
 async function main() {
   console.log("Fetching existing sale ids from new project...");
   const existingRows = await fetchAll(newClient, "sales", "id", "id");
@@ -112,20 +117,17 @@ async function main() {
   const newRows = oldRows.filter((r) => !existingIds.has(r.id)).map(transformSale);
   console.log(`  ${newRows.length} rows are new (not present in new table)`);
 
-  if (newRows.length === 0) {
-    console.log("\nNothing to insert. New rows added: 0");
-    return;
-  }
-
   let inserted = 0;
   const failures = [];
-  for (let i = 0; i < newRows.length; i += INSERT_BATCH_SIZE) {
-    const batch = newRows.slice(i, i + INSERT_BATCH_SIZE);
-    const { error } = await newClient.from("sales").insert(batch);
-    if (error) {
-      failures.push({ batchStart: i, batchEnd: i + batch.length - 1, ids: batch.map((r) => r.id), message: error.message });
-    } else {
-      inserted += batch.length;
+  if (newRows.length > 0) {
+    for (let i = 0; i < newRows.length; i += INSERT_BATCH_SIZE) {
+      const batch = newRows.slice(i, i + INSERT_BATCH_SIZE);
+      const { error } = await newClient.from("sales").insert(batch);
+      if (error) {
+        failures.push({ batchStart: i, batchEnd: i + batch.length - 1, ids: batch.map((r) => r.id), message: error.message });
+      } else {
+        inserted += batch.length;
+      }
     }
   }
 
@@ -137,8 +139,35 @@ async function main() {
       console.log(`  - rows ${f.batchStart}-${f.batchEnd}: ${f.message}`);
       console.log(`    ids: ${f.ids.join(", ")}`);
     }
-    process.exit(1);
   }
+
+  if (REPORT_FROM_DATE) {
+    console.log(`\n=== Per-day check (old vs new), from ${REPORT_FROM_DATE} ===`);
+    const oldByDate = new Map();
+    for (const r of oldRows) {
+      if (!r.date || r.date < REPORT_FROM_DATE) continue;
+      oldByDate.set(r.date, (oldByDate.get(r.date) ?? 0) + 1);
+    }
+
+    const newAfterIds = new Set([...existingIds, ...newRows.map((r) => r.id)]);
+    const newByDate = new Map();
+    for (const r of oldRows) {
+      if (!r.date || r.date < REPORT_FROM_DATE) continue;
+      if (newAfterIds.has(r.id)) {
+        newByDate.set(r.date, (newByDate.get(r.date) ?? 0) + 1);
+      }
+    }
+
+    const dates = [...oldByDate.keys()].sort();
+    for (const date of dates) {
+      const oldCount = oldByDate.get(date) ?? 0;
+      const newCount = newByDate.get(date) ?? 0;
+      const flag = oldCount === newCount ? "OK" : "MISMATCH";
+      console.log(`  ${date}: old=${oldCount} new=${newCount}  ${flag}`);
+    }
+  }
+
+  if (failures.length > 0) process.exit(1);
 }
 
 main().catch((err) => {
