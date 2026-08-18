@@ -22,15 +22,16 @@ export default async function BatchesArchivePage() {
     .is("deleted_at", null)
     .not("batch_name", "is", null);
 
-  const sales = await fetchAllRows<Pick<SaleRow, "legacy_shoe_id" | "net_profit">>(
-    (from, to) =>
-      supabaseAdmin
-        .from("sales")
-        .select("legacy_shoe_id, net_profit")
-        .is("deleted_at", null)
-        .not("legacy_shoe_id", "is", null)
-        .order("created_at", { ascending: false })
-        .range(from, to)
+  const sales = await fetchAllRows<
+    Pick<SaleRow, "legacy_shoe_id" | "sale_price" | "fee_amount" | "vat_amount" | "income_tax_amount">
+  >((from, to) =>
+    supabaseAdmin
+      .from("sales")
+      .select("legacy_shoe_id, sale_price, fee_amount, vat_amount, income_tax_amount")
+      .is("deleted_at", null)
+      .not("legacy_shoe_id", "is", null)
+      .order("created_at", { ascending: false })
+      .range(from, to)
   );
 
   const batches = computeBatchPerformance(
