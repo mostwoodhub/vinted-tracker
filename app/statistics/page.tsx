@@ -4,6 +4,7 @@ import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { fetchAllRows } from "@/lib/fetch-all";
 import type { SaleRow } from "@/lib/sales-types";
 import type { MatchableItem } from "@/lib/sales-stats";
+import { computeBatchPayback } from "@/lib/batch-stats";
 import { StatisticsView, type ExpenseRow, type ProfileRow } from "./StatisticsView";
 
 export default async function StatisticsPage() {
@@ -36,6 +37,12 @@ export default async function StatisticsPage() {
     .from("sales_profiles_archive")
     .select("id, email, display_name");
 
+  const { data: realBatches } = await supabaseAdmin
+    .from("batches")
+    .select("label, purchase_cost, sales_amount");
+
+  const batchPayback = computeBatchPayback(sales, expenses, realBatches ?? []);
+
   // Includes deleted items too — matching is about historical linkage for
   // reporting, not current warehouse state.
   const { data: itemRows } = await supabaseAdmin
@@ -64,6 +71,7 @@ export default async function StatisticsPage() {
       expenses={expenses}
       profiles={(profiles ?? []) as ProfileRow[]}
       items={items}
+      batchPayback={batchPayback}
     />
   );
 }

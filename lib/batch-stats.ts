@@ -87,3 +87,49 @@ export function computeLinkedSales(
     count: matched.length,
   };
 }
+
+export type BatchPayback = {
+  label: string;
+  cost: number;
+  revenue: number;
+  remaining: number;
+  breakEvenReached: boolean;
+};
+
+// All-time cost-recovery view combining both batch sources into one row per
+// label, same merge rule as /batches-archive: a real `batches` row's own
+// purchase_cost/sales_amount baseline wins over a same-label legacy expense
+// entry, live `sales` matches are added on top either way.
+export function computeBatchPayback(
+  allSales: SaleRow[],
+  legacyBatchCosts: { batch_name: string | null; amount: number | null }[],
+  realBatches: { label: string | null; purchase_cost: number | null; sales_amount: number | null }[]
+): BatchPayback[] {
+  const costByLabel = new Map<string, number>();
+  for (const row of legacyBatchCosts) {
+    if (!row.batch_name) continue;
+    costByLabel.set(row.batch_name, (costByLabel.get(row.batch_name) ?? 0) + (row.amount ?? 0));
+  }
+
+  const baselineSalesByLabel = new Map<string, number>();
+  for (const b of realBatches) {
+    if (!b.label) continue;
+    costByLabel.set(b.label, b.purchase_cost ?? 0);
+    baselineSalesByLabel.set(b.label, b.sales_amount ?? 0);
+  }
+
+  return Array.from(costByLabel.entries())
+    .map(([label, cost]) => {
+      const linked = computeLinkedSales(allSales, label);
+      const revenue = (baselineSalesByLabel.get(label) ?? 0) + linked.amount;
+      const remaining = cost - revenue;
+      return {
+        label,
+        cost,
+        revenue,
+        remaining: Math.abs(remaining),
+        breakEvenReached: remaining <= 0,
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+}

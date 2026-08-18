@@ -9,6 +9,7 @@ import { INCOME_TAX_RATE } from "@/lib/sales-calc";
 import { computeSalesStatistics, type Breakdown, type MatchableItem } from "@/lib/sales-stats";
 import { EXPENSE_CATEGORY_ROWS } from "@/lib/expense-categories";
 import type { SaleRow } from "@/lib/sales-types";
+import type { BatchPayback } from "@/lib/batch-stats";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
 export type ExpenseRow = {
@@ -95,16 +96,79 @@ function BreakdownTable({ title, rows }: { title: string; rows: Breakdown[] }) {
   );
 }
 
+function BatchPaybackTable({ rows }: { rows: BatchPayback[] }) {
+  return (
+    <div className="flex flex-col gap-[var(--gap-default)]">
+      <h2 className="text-lg font-semibold text-[var(--color-text)]">
+        Okupność partii (cały czas)
+      </h2>
+      <p className={`text-xs ${mutedTextClass}`}>
+        Koszt partii vs. przychód netto ze wszystkich dopasowanych sprzedaży —
+        niezależnie od wybranego okresu powyżej.
+      </p>
+      <div className={`overflow-x-auto ${cardClass} !p-0`}>
+        <table className="w-full min-w-[480px] text-left text-sm">
+          <thead className={`text-xs ${mutedTextClass}`}>
+            <tr>
+              <th className="px-4 py-3 font-medium">Partia</th>
+              <th className="px-4 py-3 font-medium">Koszt</th>
+              <th className="px-4 py-3 font-medium">Przychód netto</th>
+              <th className="px-4 py-3 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                key={row.label}
+                className="[&:not(:last-child)]:border-b [&:not(:last-child)]:border-[var(--color-bg)]"
+              >
+                <td className="px-4 py-3 font-medium text-[var(--color-text)]">
+                  {row.label}
+                </td>
+                <td className="px-4 py-3 text-[var(--color-warning)]">
+                  {formatPln(row.cost)}
+                </td>
+                <td className="px-4 py-3 text-[var(--color-text)]">
+                  {formatPln(row.revenue)}
+                </td>
+                <td
+                  className={`px-4 py-3 font-medium ${
+                    row.breakEvenReached
+                      ? "text-[var(--color-success)]"
+                      : "text-[var(--color-danger)]"
+                  }`}
+                >
+                  {row.breakEvenReached ? "+" : "-"}
+                  {formatPln(row.remaining)}
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={4} className={`px-4 py-6 text-center text-sm ${mutedTextClass}`}>
+                  Brak danych.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function StatisticsView({
   sales,
   expenses,
   profiles,
   items = [],
+  batchPayback = [],
 }: {
   sales: SaleRow[];
   expenses: ExpenseRow[];
   profiles: ProfileRow[];
   items?: MatchableItem[];
+  batchPayback?: BatchPayback[];
 }) {
   const [period, setPeriod] = useState<PeriodFilterState>(defaultPeriodFilter());
 
@@ -256,6 +320,8 @@ export function StatisticsView({
             />
           </div>
         </div>
+
+        <BatchPaybackTable rows={batchPayback} />
 
         <BreakdownTable title="Wg platformy" rows={stats.byPlatform} />
         <BreakdownTable title="Wg konta" rows={stats.byAccount} />

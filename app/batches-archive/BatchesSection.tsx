@@ -23,10 +23,13 @@ import {
 
 const initialState: BatchActionState = { status: "idle" };
 
-export type RealBatchRow = {
-  id: string;
-  label: string | null;
-  batchNumber: number;
+export type BatchRow = {
+  // null = not yet a real `batches` row — a purchase cost was logged for
+  // this letter in the old expenses-based system, but nothing here to
+  // edit/delete until someone saves it (which creates the row).
+  id: string | null;
+  label: string;
+  batchNumber: number | null;
   purchaseCost: number | null;
   purchaseLocation: string | null;
   quantity: number | null;
@@ -149,27 +152,32 @@ function CreateBatchForm() {
   );
 }
 
-function RealBatchCard({ batch }: { batch: RealBatchRow }) {
+function BatchCard({ batch }: { batch: BatchRow }) {
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saveState, saveAction] = useActionState(updateBatchPurchaseCost, initialState);
   const [deleteState, deleteAction] = useActionState(deleteBatch, initialState);
+  // A batch with no real `batches` row yet (id === null) saves by creating
+  // one instead of updating — "adopts" the old expenses-tracked batch into
+  // the real system the first time someone edits it.
+  const [createState, createAction] = useActionState(createBatch, initialState);
+  const editAction = batch.id ? saveAction : createAction;
+  const editState = batch.id ? saveState : createState;
 
   // Adjust state during render (React-sanctioned pattern) instead of an
   // effect, to close the edit form the moment a save succeeds.
-  const [handledSaveState, setHandledSaveState] = useState(saveState);
-  if (saveState !== handledSaveState) {
-    setHandledSaveState(saveState);
-    if (saveState.status === "success" && editing) setEditing(false);
+  const [handledEditState, setHandledEditState] = useState(editState);
+  if (editState !== handledEditState) {
+    setHandledEditState(editState);
+    if (editState.status === "success" && editing) setEditing(false);
   }
 
-  if (confirmingDelete) {
+  if (confirmingDelete && batch.id) {
     return (
       <div className={noticeDangerClass}>
         <p className="text-sm text-[var(--color-danger)]">
-          Na pewno usunąć partię {batch.label ?? batch.batchNumber}? Towary (
-          {batch.itemCount}) nie zostaną usunięte — zostaną tylko odłączone od
-          partii.
+          Na pewno usunąć partię {batch.label}? Towary ({batch.itemCount}) nie
+          zostaną usunięte — zostaną tylko odłączone od partii.
         </p>
         {deleteState.status === "error" && (
           <p className={errorTextClass} role="alert">
@@ -193,14 +201,15 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
 
   if (editing) {
     return (
-      <form action={saveAction} className={`flex flex-col gap-3 ${cardClass}`}>
-        <input type="hidden" name="batchId" value={batch.id} />
+      <form action={editAction} className={`flex flex-col gap-3 ${cardClass}`}>
+        {batch.id && <input type="hidden" name="batchId" value={batch.id} />}
         <label className="flex flex-col gap-1.5">
           <span className={labelClass}>Nazwa partii</span>
           <input
             name="label"
             type="text"
-            defaultValue={batch.label ?? ""}
+            required={!batch.id}
+            defaultValue={batch.label}
             className={`${inputClass} max-w-xs`}
           />
         </label>
@@ -258,9 +267,9 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
             className={`${inputClass} max-w-xs`}
           />
         </label>
-        {saveState.status === "error" && (
+        {editState.status === "error" && (
           <p className={errorTextClass} role="alert">
-            {saveState.error}
+            {editState.error}
           </p>
         )}
         <div className="flex gap-2">
@@ -285,11 +294,10 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
   const effectiveSold = Math.max(batch.soldCount, manualPlusLinkedSold);
   const remaining = Math.max(0, total - effectiveSold);
 
-  // Same "progress toward break-even" visual as the old app / the legacy
-  // prefix-matched Partie obuwia section below. Sales total is the
-  // spreadsheet-imported baseline (money already collected before this
-  // system tracked sales) plus whatever's been sold since and found in the
-  // live `sales` table by shoe-id prefix.
+  // Sales total is whatever manual/spreadsheet baseline exists (money
+  // already collected before this system tracked sales, or before this
+  // batch had a real row at all) plus everything found live in the `sales`
+  // table by shoe-id prefix since.
   const hasCostData = batch.purchaseCost != null;
   const cost = batch.purchaseCost ?? 0;
   const sales = (batch.salesAmount ?? 0) + batch.linkedSalesAmount;
@@ -301,7 +309,7 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
     <div className={`flex flex-col gap-3 ${cardClass}`}>
       <div className="flex items-center justify-between gap-3">
         <span className="font-bold text-[var(--color-text)]">
-          📦 Partia {batch.label ?? batch.batchNumber}
+          📦 Partia {batch.label}
         </span>
         <div className="flex shrink-0 gap-2">
           <button
@@ -311,13 +319,15 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
           >
             Edytuj
           </button>
-          <button
-            type="button"
-            onClick={() => setConfirmingDelete(true)}
-            className="rounded-full bg-[var(--color-danger-bg)] px-2.5 py-1 text-xs font-medium text-[var(--color-danger)] transition-opacity hover:opacity-80"
-          >
-            Usuń
-          </button>
+          {batch.id && (
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              className="rounded-full bg-[var(--color-danger-bg)] px-2.5 py-1 text-xs font-medium text-[var(--color-danger)] transition-opacity hover:opacity-80"
+            >
+              Usuń
+            </button>
+          )}
         </div>
       </div>
 
@@ -387,17 +397,18 @@ function RealBatchCard({ batch }: { batch: RealBatchRow }) {
   );
 }
 
-export function RealBatchesSection({ batches }: { batches: RealBatchRow[] }) {
+export function BatchesSection({ batches }: { batches: BatchRow[] }) {
   return (
     <div className="flex flex-col gap-[var(--space-md)]">
-      <h2 className="text-lg font-semibold text-[var(--color-text)]">Partie zakupowe</h2>
+      <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-text)]">Partie</h1>
       <p className={`text-sm ${mutedTextClass}`}>
-        Partie utworzone przy przyjęciu towaru albo dodane ręcznie tutaj — nazwa
-        i koszt zakupu do edycji.
+        Wszystkie partie zakupowe firmy w jednym miejscu — koszt vs.
+        sprzedaż dopasowana po prefiksie numeru obuwia, niezależnie czy
+        partia pochodzi ze starego systemu czy została dodana tutaj.
       </p>
       <div className="flex flex-col gap-[var(--gap-default)]">
         {batches.map((batch) => (
-          <RealBatchCard key={batch.id} batch={batch} />
+          <BatchCard key={batch.id ?? batch.label} batch={batch} />
         ))}
         {batches.length === 0 && (
           <p className={`text-sm ${mutedTextClass}`}>Brak partii.</p>
