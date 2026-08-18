@@ -83,6 +83,20 @@ const STATUS_META: Record<string, { label: string; badge: string }> = {
 
 const CONDITIONS = ["Nowe", "Bardzo dobry", "Dobry", "Zadowalający"];
 
+// The number the business actually orders stock by — the manually-entered
+// old/Stary numer, falling back to this app's own counter only for the rare
+// item that never got one. Used to sort "Numeracja" newest-number-first,
+// same direction as the "Dodania" (internal_number) sort so switching
+// between them doesn't flip the whole list upside down.
+function itemSortNumber(item: WarehouseCardItem): number {
+  const legacy = item.legacy_number?.trim();
+  if (legacy) {
+    const match = legacy.match(/(\d+)/);
+    if (match) return Number(match[1]);
+  }
+  return item.internal_number;
+}
+
 function pillClass(active: boolean) {
   return (
     "rounded-full px-4 py-2 text-sm font-medium transition-colors " +
@@ -382,6 +396,7 @@ export function WarehouseCards({
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"numeracja" | "dodania">("numeracja");
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [zoomedUrl, setZoomedUrl] = useState<string | null>(null);
   const [deletePending, startDeleteTransition] = useTransition();
@@ -499,6 +514,16 @@ export function WarehouseCards({
     search,
   ]);
 
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    if (sortBy === "numeracja") {
+      arr.sort((a, b) => itemSortNumber(b) - itemSortNumber(a));
+    } else {
+      arr.sort((a, b) => b.internal_number - a.internal_number);
+    }
+    return arr;
+  }, [filtered, sortBy]);
+
   const summary = useMemo(() => {
     const sold = filtered.filter((item) => item.status === "sold").length;
     const published = filtered.filter(
@@ -556,6 +581,26 @@ export function WarehouseCards({
           className={`${inputClass} max-w-sm`}
         />
       </label>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-[var(--color-text-muted)]">Sortuj</span>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setSortBy("numeracja")}
+            className={pillClass(sortBy === "numeracja")}
+          >
+            Numeracja
+          </button>
+          <button
+            type="button"
+            onClick={() => setSortBy("dodania")}
+            className={pillClass(sortBy === "dodania")}
+          >
+            Data dodania
+          </button>
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-end gap-[var(--gap-default)]">
         <label className="flex flex-col gap-1.5">
@@ -704,7 +749,7 @@ export function WarehouseCards({
       )}
 
       <div className="flex flex-col gap-[var(--gap-default)]">
-        {filtered.map((item) => {
+        {sorted.map((item) => {
           const meta = statusMeta(item.status);
           return (
             <div
@@ -800,7 +845,7 @@ export function WarehouseCards({
           );
         })}
 
-        {filtered.length === 0 && (
+        {sorted.length === 0 && (
           <div className="rounded-[var(--radius-md)] bg-[var(--color-surface)] p-8 text-center text-sm text-[var(--color-text-muted)]">
             Brak towarów spełniających kryteria.
           </div>

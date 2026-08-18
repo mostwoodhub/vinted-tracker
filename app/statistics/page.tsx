@@ -47,7 +47,7 @@ export default async function StatisticsPage() {
   // reporting, not current warehouse state.
   const { data: itemRows } = await supabaseAdmin
     .from("items")
-    .select("internal_number, brand, size, batches(label)");
+    .select("internal_number, legacy_number, brand, size, batches(label)");
 
   const items: MatchableItem[] = (itemRows ?? []).map((row) => {
     const batches = row.batches as
@@ -59,6 +59,7 @@ export default async function StatisticsPage() {
       : batches?.label ?? null;
     return {
       internalNumber: row.internal_number,
+      legacyNumber: row.legacy_number,
       batchLabel,
       brand: row.brand,
       size: row.size,

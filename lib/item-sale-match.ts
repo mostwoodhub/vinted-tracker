@@ -1,13 +1,19 @@
-// Best-effort matching between a sale row and the item it came from, based
-// on the free-typed "legacy_shoe_id" field (e.g. "ZA16678" = batch label
-// "ZA" + item internal_number 16678) — sales have no real foreign key into
-// `items`. Used for read-only reporting (margin by brand/size/batch); a sale
-// with no match or an unparsable id is simply left out of the breakdown,
-// same forgiving approach as lib/item-sale-link.ts uses for the "sold"
-// status sync.
+// Best-effort matching between a sale row and the item it came from. Sales
+// have no real foreign key into `items` — they carry a free-typed
+// "legacy_shoe_id" field instead, which is the same old/manual number
+// written on the physical item (see items.legacy_number). Multi-pair sales
+// join several shoe ids with ", " — each part is checked individually. A
+// sale with no match or an unparsable id is simply left out of whatever's
+// being reported/synced, same forgiving approach throughout this layer.
+//
+// Matching is primarily by exact legacy_number string — items.internal_number
+// (this app's own 1,2,3… counter) essentially never coincides with an old
+// shoe id like "R15699", so it's only used as a last-resort key for the rare
+// item that has no legacy_number at all.
 
 export type MatchableItem = {
   internalNumber: number;
+  legacyNumber: string | null;
   batchLabel: string | null;
   brand: string | null;
   size: string | null;
@@ -25,26 +31,35 @@ export function parseShoeId(
   return { prefix, internalNumber };
 }
 
+function indexKey(item: MatchableItem): string {
+  const legacy = item.legacyNumber?.trim();
+  return legacy || `${item.batchLabel ?? ""}${item.internalNumber}`;
+}
+
 export function buildItemIndex(
   items: MatchableItem[]
-): Map<number, MatchableItem[]> {
-  const map = new Map<number, MatchableItem[]>();
+): Map<string, MatchableItem[]> {
+  const map = new Map<string, MatchableItem[]>();
   for (const item of items) {
-    const list = map.get(item.internalNumber) ?? [];
+    const key = indexKey(item);
+    const list = map.get(key) ?? [];
     list.push(item);
-    map.set(item.internalNumber, list);
+    map.set(key, list);
   }
   return map;
 }
 
 export function matchItemForShoeId(
   shoeId: string | null | undefined,
-  index: Map<number, MatchableItem[]>
+  index: Map<string, MatchableItem[]>
 ): MatchableItem | null {
-  const parsed = parseShoeId(shoeId);
-  if (!parsed) return null;
-  const candidates = index.get(parsed.internalNumber) ?? [];
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0];
-  return candidates.find((c) => c.batchLabel === (parsed.prefix || null)) ?? null;
+  if (!shoeId) return null;
+  for (const part of shoeId.split(",").map((p) => p.trim())) {
+    if (!part) continue;
+    const candidates = index.get(part) ?? [];
+    // Ambiguous exact-string collision (e.g. a duplicate legacy_number) —
+    // don't guess which one it was, same forgiving approach as elsewhere.
+    if (candidates.length === 1) return candidates[0];
+  }
+  return null;
 }
