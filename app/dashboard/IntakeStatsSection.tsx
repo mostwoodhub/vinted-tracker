@@ -140,8 +140,11 @@ export function IntakeStatsSection({
 
     if (mode === "day") {
       const xs = points.map((p) => p.x);
-      const start = Math.min(360, ...xs);
-      const end = Math.max(1320, ...xs);
+      // Default 07:00–14:00 — the usual work window, zoomed in enough that
+      // gaps between intake events actually read as gaps. Still expands to
+      // fit any real data that falls outside it.
+      const start = Math.min(7 * 60, ...xs);
+      const end = Math.max(14 * 60, ...xs);
       domain = [start, end];
       ticks = [];
       for (let m = Math.ceil(start / 60) * 60; m <= end; m += 60) ticks.push(m);
