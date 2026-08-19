@@ -5,7 +5,7 @@ import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { computeLinkedSales } from "@/lib/batch-stats";
 import type { SaleRow } from "@/lib/sales-types";
-import { IntakeFrequencyChart, type HourlyIntakeRow } from "./IntakeFrequencyChart";
+import { IntakeFrequencyChart, type IntakeEvent } from "./IntakeFrequencyChart";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
 const PROCESSING_STATUSES = [
@@ -92,11 +92,34 @@ export default async function DashboardPage() {
           .order("created_at", { ascending: false })
           .range(from, to)
       ),
-      supabaseAdmin.from("employees").select("id, full_name"),
+      supabaseAdmin
+        .from("employees")
+        .select("id, full_name, created_at")
+        .order("created_at", { ascending: true }),
     ]);
 
   const todayWarsaw = warsawDateString(new Date());
-  const nameByEmployeeId = new Map((employees ?? []).map((e) => [e.id, e.full_name]));
+
+  // Two employees can share a full_name (e.g. two people both named
+  // "Daria") — the id is the real identity, so a name collision needs a
+  // disambiguating suffix everywhere the name is displayed, or the two
+  // would silently merge into one row/series and double-count.
+  const nameCounts = new Map<string, number>();
+  for (const e of employees ?? []) {
+    nameCounts.set(e.full_name, (nameCounts.get(e.full_name) ?? 0) + 1);
+  }
+  const nameOrdinal = new Map<string, number>();
+  const displayNameByEmployeeId = new Map<string, string>();
+  for (const e of employees ?? []) {
+    if ((nameCounts.get(e.full_name) ?? 0) <= 1) {
+      displayNameByEmployeeId.set(e.id, e.full_name);
+    } else {
+      const n = (nameOrdinal.get(e.full_name) ?? 0) + 1;
+      nameOrdinal.set(e.full_name, n);
+      displayNameByEmployeeId.set(e.id, `${e.full_name} #${n}`);
+    }
+  }
+
   const todaysIntakeByEmployee = new Map<string, number>();
   for (const item of items ?? []) {
     if (!item.created_by || !item.created_at) continue;
@@ -108,34 +131,36 @@ export default async function DashboardPage() {
   }
   const todaysIntakeRows = Array.from(todaysIntakeByEmployee.entries())
     .map(([employeeId, count]) => ({
-      name: nameByEmployeeId.get(employeeId) ?? "Nieznany",
+      name: displayNameByEmployeeId.get(employeeId) ?? "Nieznany",
       count,
     }))
     .sort((a, b) => b.count - a.count);
 
-  // Same-order employee list drives both the stacked bar colors and the
-  // legend — fixed by descending today's total, so the busiest person's
-  // color stays stable as the day goes on rather than shuffling.
+  // Same-order employee list fixes the timeline's row order — busiest
+  // person's row stays stable as the day goes on rather than shuffling.
   const activeEmployeeNames = todaysIntakeRows.map((r) => r.name);
-  const hourlyCounts = new Map<number, Map<string, number>>();
+
+  // One point per item, at its exact time of day — the hourly-bucket
+  // version hid *when* within the hour something happened; this keeps
+  // "08:30 added, 08:33 added, 08:36 added" visible directly.
+  const intakeEvents: IntakeEvent[] = [];
   for (const item of items ?? []) {
     if (!item.created_by || !item.created_at) continue;
     const createdAt = new Date(item.created_at);
     if (warsawDateString(createdAt) !== todayWarsaw) continue;
     const hour = warsawHour(createdAt);
-    const name = nameByEmployeeId.get(item.created_by) ?? "Nieznany";
-    const perEmployee = hourlyCounts.get(hour) ?? new Map<string, number>();
-    perEmployee.set(name, (perEmployee.get(name) ?? 0) + 1);
-    hourlyCounts.set(hour, perEmployee);
+    const minute = Number(
+      new Intl.DateTimeFormat("sv-SE", {
+        timeZone: "Europe/Warsaw",
+        minute: "2-digit",
+      }).format(createdAt)
+    );
+    intakeEvents.push({
+      employee: displayNameByEmployeeId.get(item.created_by) ?? "Nieznany",
+      minutes: hour * 60 + minute,
+      time: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+    });
   }
-  const hourlyIntakeData: HourlyIntakeRow[] = Array.from({ length: 24 }, (_, hour) => {
-    const perEmployee = hourlyCounts.get(hour);
-    const row: HourlyIntakeRow = { hour: `${String(hour).padStart(2, "0")}:00` };
-    for (const name of activeEmployeeNames) {
-      row[name] = perEmployee?.get(name) ?? 0;
-    }
-    return row;
-  });
 
   const rows = items ?? [];
 
@@ -268,7 +293,7 @@ export default async function DashboardPage() {
               </tbody>
             </table>
           </div>
-          <IntakeFrequencyChart data={hourlyIntakeData} employeeNames={activeEmployeeNames} />
+          <IntakeFrequencyChart events={intakeEvents} employeeNames={activeEmployeeNames} />
         </div>
 
         <div className="grid grid-cols-1 gap-[var(--space-md)] sm:grid-cols-3">

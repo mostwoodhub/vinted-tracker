@@ -1,20 +1,12 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from "recharts";
 import { cardClass, mutedTextClass } from "@/lib/ui-classes";
 
-// Validated categorical palette (see dataviz skill) — fixed hue order, never
-// cycled or reassigned per-render, so a given employee always keeps the same
-// color across reloads. Capped at 6 series; a 7th employee active in one day
-// would need a re-validated palette rather than an ad-hoc extra hue.
-const SERIES_COLORS = [
-  "#2a78d6", // blue
-  "#eb6834", // orange
-  "#1baf7a", // aqua
-  "#eda100", // yellow
-  "#e87ba4", // magenta
-  "#008300", // green
-];
+// Validated categorical palette slot 1 (blue, see dataviz skill) — a single
+// hue is correct here since each employee already gets their own row; color
+// on the dot is just a legibility aid, not the identity channel.
+const DOT_COLOR = "#2a78d6";
 
 const tooltipContentStyle: React.CSSProperties = {
   backgroundColor: "var(--color-surface)",
@@ -26,56 +18,90 @@ const tooltipContentStyle: React.CSSProperties = {
 
 const tickStyle = { fill: "var(--color-text-muted)", fontSize: 12 };
 
-export type HourlyIntakeRow = { hour: string } & Record<string, number | string>;
+const ROW_HEIGHT = 48;
+const BASE_START_MIN = 6 * 60; // 06:00 — a sensible default window even with no events yet
+const BASE_END_MIN = 22 * 60; // 22:00
+
+export type IntakeEvent = { employee: string; minutes: number; time: string };
+
+function minutesToLabel(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  return `${String(h).padStart(2, "0")}:00`;
+}
+
+function CustomTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: { payload: IntakeEvent }[];
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  return (
+    <div style={tooltipContentStyle} className="px-3 py-2">
+      <p className="font-semibold">{point.time}</p>
+      <p className={mutedTextClass}>{point.employee}</p>
+    </div>
+  );
+}
 
 export function IntakeFrequencyChart({
-  data,
+  events,
   employeeNames,
 }: {
-  data: HourlyIntakeRow[];
+  events: IntakeEvent[];
   employeeNames: string[];
 }) {
   if (employeeNames.length === 0) return null;
 
+  const eventMinutes = events.map((e) => e.minutes);
+  const domainStart = Math.min(BASE_START_MIN, ...eventMinutes);
+  const domainEnd = Math.max(BASE_END_MIN, ...eventMinutes);
+  const ticks: number[] = [];
+  for (let m = Math.ceil(domainStart / 60) * 60; m <= domainEnd; m += 60) {
+    ticks.push(m);
+  }
+
   return (
     <div className={cardClass}>
       <h2 className="mb-1 text-lg font-semibold text-[var(--color-text)]">
-        Częstotliwość przyjmowania towarów (dziś, wg godziny)
+        Chronologia przyjmowania towarów (dziś)
       </h2>
       <p className={`mb-4 text-xs ${mutedTextClass}`}>
-        Ile towarów każdy pracownik dodał w danej godzinie — widać tempo i przerwy.
+        Każda kropka to jeden dodany towar, w dokładnej godzinie i minucie.
       </p>
-      <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={data} barGap={2} barCategoryGap="20%">
-          <CartesianGrid stroke="var(--color-border)" vertical={false} />
+      <ResponsiveContainer width="100%" height={employeeNames.length * ROW_HEIGHT + 60}>
+        <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+          <CartesianGrid stroke="var(--color-border)" horizontal={false} />
           <XAxis
-            dataKey="hour"
+            type="number"
+            dataKey="minutes"
+            domain={[domainStart, domainEnd]}
+            ticks={ticks}
+            tickFormatter={minutesToLabel}
             tick={tickStyle}
             axisLine={{ stroke: "var(--color-border)" }}
             tickLine={false}
-            interval={2}
           />
           <YAxis
+            type="category"
+            dataKey="employee"
+            domain={employeeNames}
+            allowDuplicatedCategory={false}
             tick={tickStyle}
             axisLine={false}
             tickLine={false}
-            width={30}
-            allowDecimals={false}
+            width={100}
           />
-          <Tooltip contentStyle={tooltipContentStyle} cursor={{ fill: "var(--color-surface-2)" }} />
-          <Legend wrapperStyle={{ fontSize: 12, color: "var(--color-text-muted)" }} />
-          {employeeNames.map((name, i) => (
-            <Bar
-              key={name}
-              dataKey={name}
-              stackId="intake"
-              fill={SERIES_COLORS[i % SERIES_COLORS.length]}
-              radius={i === employeeNames.length - 1 ? [4, 4, 0, 0] : undefined}
-              maxBarSize={24}
-              isAnimationActive={false}
-            />
-          ))}
-        </BarChart>
+          <Tooltip content={<CustomTooltip />} cursor={{ stroke: "var(--color-border)", strokeDasharray: "3 3" }} />
+          <Scatter
+            data={events}
+            shape={(props: { cx?: number; cy?: number }) => (
+              <circle cx={props.cx} cy={props.cy} r={5} fill={DOT_COLOR} fillOpacity={0.85} />
+            )}
+          />
+        </ScatterChart>
       </ResponsiveContainer>
     </div>
   );
