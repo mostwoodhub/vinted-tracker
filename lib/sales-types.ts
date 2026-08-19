@@ -32,6 +32,7 @@ export type SaleRow = {
   label_url2: string | null;
   label_filename: string | null;
   label_filename2: string | null;
+  receipt_url: string | null;
   legacy_user_id: string | null;
   items: SaleItem[] | null;
 };

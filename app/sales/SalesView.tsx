@@ -306,8 +306,18 @@ export function SalesView({
                     {sale.net_profit != null && sale.net_profit > 0 ? "+" : ""}
                     {formatPln(sale.net_profit)}
                   </p>
-                  {(sale.label_url || sale.label_url2) && (
+                  {(sale.receipt_url || sale.label_url || sale.label_url2) && (
                     <div className="mt-1 flex justify-end gap-1.5">
+                      {sale.receipt_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={sale.receipt_url}
+                          alt=""
+                          onClick={() => setZoomedUrl(sale.receipt_url)}
+                          title="Zrzut ekranu sprzedaży"
+                          className="h-7 w-7 cursor-zoom-in rounded-[var(--radius-sm)] object-cover transition-opacity hover:opacity-80"
+                        />
+                      )}
                       {sale.label_url && (
                         <a
                           href={sale.label_url}

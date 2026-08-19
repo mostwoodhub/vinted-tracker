@@ -37,6 +37,7 @@ export async function createSale(
     .filter((entry): entry is File => entry instanceof File && entry.size > 0);
   const labelFile = formData.get("label");
   const labelFile2 = formData.get("label2");
+  const receiptFile = formData.get("receipt");
 
   let photoUrls: string[];
   try {
@@ -52,6 +53,15 @@ export async function createSale(
     if (labelFile2 instanceof File && labelFile2.size > 0) label2Result = await uploadSaleFile(labelFile2);
   } catch (err) {
     return { status: "error", error: err instanceof Error ? err.message : "Nie udało się przesłać etykiety" };
+  }
+
+  let receiptUrl: string | null = null;
+  try {
+    if (receiptFile instanceof File && receiptFile.size > 0) {
+      receiptUrl = (await uploadSaleFile(receiptFile)).url;
+    }
+  } catch (err) {
+    return { status: "error", error: err instanceof Error ? err.message : "Nie udało się przesłać zrzutu ekranu" };
   }
 
   const { error } = await supabaseAdmin.from("sales").insert({
@@ -82,6 +92,7 @@ export async function createSale(
     label_filename: labelResult.filename,
     label_url2: label2Result.url,
     label_filename2: label2Result.filename,
+    receipt_url: receiptUrl,
   });
 
   if (error) {
