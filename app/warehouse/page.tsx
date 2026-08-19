@@ -60,7 +60,10 @@ export default async function WarehousePage() {
 
     const pathByItem = new Map<string, string>();
     for (const id of ids) {
-      const path = finalByItem.get(id) ?? workingByItem.get(id);
+      // Working/intake photo always wins for the list thumbnail — it's the
+      // consistent reference shot taken at intake, so the list shouldn't
+      // silently swap it for a final publication photo mid-workflow.
+      const path = workingByItem.get(id) ?? finalByItem.get(id);
       if (path) pathByItem.set(id, path);
     }
 
