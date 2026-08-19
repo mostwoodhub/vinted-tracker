@@ -9,6 +9,7 @@ import { parseShoeId } from "@/lib/item-sale-match";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
 import {
   buttonPrimaryClass,
+  cardSmClass,
   checkboxClass,
   errorTextClass,
   headingClass,
@@ -111,6 +112,7 @@ type IntakeFormProps = {
   batchLabels: string[];
   heading?: string;
   suggestedLegacyNumber?: string | null;
+  todayCount?: number | null;
 };
 
 export function IntakeForm({
@@ -119,6 +121,7 @@ export function IntakeForm({
   batchLabels,
   heading = "Przyjęcie towaru",
   suggestedLegacyNumber = null,
+  todayCount = null,
 }: IntakeFormProps) {
   const [state, formAction] = useActionState(createItem, initialState);
   const formRef = useRef<HTMLFormElement>(null);
@@ -133,6 +136,9 @@ export function IntakeForm({
   // sequential items can be entered without retyping the number pattern
   // every time or waiting on a fresh page load.
   const [nextSuggestion, setNextSuggestion] = useState(suggestedLegacyNumber);
+  // Bumped locally right after each successful save, so the employee sees
+  // their own count tick up immediately instead of only on next page load.
+  const [count, setCount] = useState(todayCount);
 
   function handleLegacyToggle(checked: boolean) {
     setIsLegacyItem(checked);
@@ -156,6 +162,7 @@ export function IntakeForm({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCondition("");
       setIsLegacyItem(false);
+      setCount((c) => (c ?? 0) + 1);
       const parsed = parseShoeId(legacyNumber);
       if (parsed) {
         setNextSuggestion(`${parsed.prefix}${parsed.internalNumber + 1}`);
@@ -168,6 +175,12 @@ export function IntakeForm({
   return (
     <div className={pageWrapClass}>
       <div className="mx-auto flex w-full max-w-xl flex-col gap-[var(--space-lg)] px-6 py-12">
+        {count != null && (
+          <div className={`${cardSmClass} flex items-center justify-between`}>
+            <span className={`text-sm ${mutedTextClass}`}>Dzisiaj przyjąłeś</span>
+            <span className="text-xl font-bold text-[var(--color-text)]">{count}</span>
+          </div>
+        )}
         <h1 className={headingClass}>{heading}</h1>
 
       <form ref={formRef} action={formAction} className="flex flex-col gap-5">

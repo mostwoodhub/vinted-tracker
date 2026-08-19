@@ -1,15 +1,40 @@
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { formatItemNumber } from "@/lib/item-number";
-import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
+import { getCurrentEmployee } from "@/lib/auth";
+import { warsawDateString } from "@/lib/warsaw-time";
+import { cardClass, cardSmClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
+
+// Shown to the photographer themselves, right on the queue they work from —
+// so they can see their own uploads are actually being recorded, not just
+// admin looking at a dashboard elsewhere.
+async function countTodaysPhotos(employeeId: string): Promise<number> {
+  const todayWarsaw = warsawDateString(new Date());
+  const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabaseAdmin
+    .from("item_status_log")
+    .select("changed_at")
+    .eq("changed_by", employeeId)
+    .eq("to_status", "photos_uploaded")
+    .gte("changed_at", since);
+
+  return (data ?? []).filter(
+    (log) => log.changed_at && warsawDateString(new Date(log.changed_at)) === todayWarsaw
+  ).length;
+}
 
 export default async function PhotoQueuePage() {
-  const { data: items } = await supabaseAdmin
-    .from("items")
-    .select("id, internal_number, legacy_number, brand, size, batches(label)")
-    .eq("status", "received")
-    .is("deleted_at", null)
-    .order("internal_number", { ascending: true });
+  const employee = await getCurrentEmployee();
+
+  const [{ data: items }, todayCount] = await Promise.all([
+    supabaseAdmin
+      .from("items")
+      .select("id, internal_number, legacy_number, brand, size, batches(label)")
+      .eq("status", "received")
+      .is("deleted_at", null)
+      .order("internal_number", { ascending: true }),
+    employee ? countTodaysPhotos(employee.id) : Promise.resolve(null),
+  ]);
 
   const rows = (items ?? []) as unknown as {
     id: string;
@@ -23,6 +48,12 @@ export default async function PhotoQueuePage() {
   return (
     <div className={pageWrapClass}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-[var(--space-lg)] px-6 py-12">
+        {todayCount != null && (
+          <div className={`${cardSmClass} flex items-center justify-between`}>
+            <span className={`text-sm ${mutedTextClass}`}>Dzisiaj sfotografowałeś</span>
+            <span className="text-xl font-bold text-[var(--color-text)]">{todayCount}</span>
+          </div>
+        )}
         <h1 className={headingClass}>Towary do zdjęć</h1>
 
         {rows.length === 0 && (
