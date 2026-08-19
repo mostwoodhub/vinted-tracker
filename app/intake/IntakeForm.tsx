@@ -4,6 +4,8 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { createItem, type IntakeState } from "./actions";
 import { FileDropzone } from "@/app/FileDropzone";
+import { IdleReminder } from "@/app/IdleReminder";
+import { IntakeStatsSection, type IntakeItem } from "@/app/dashboard/IntakeStatsSection";
 import { formatItemNumber } from "@/lib/item-number";
 import { parseShoeId } from "@/lib/item-sale-match";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
@@ -113,6 +115,10 @@ type IntakeFormProps = {
   heading?: string;
   suggestedLegacyNumber?: string | null;
   todayCount?: number | null;
+  ownItems?: IntakeItem[] | null;
+  employeeId?: string | null;
+  employeeName?: string | null;
+  todayWarsaw?: string;
 };
 
 export function IntakeForm({
@@ -122,6 +128,10 @@ export function IntakeForm({
   heading = "Przyjęcie towaru",
   suggestedLegacyNumber = null,
   todayCount = null,
+  ownItems = null,
+  employeeId = null,
+  employeeName = null,
+  todayWarsaw,
 }: IntakeFormProps) {
   const [state, formAction] = useActionState(createItem, initialState);
   const formRef = useRef<HTMLFormElement>(null);
@@ -174,6 +184,7 @@ export function IntakeForm({
 
   return (
     <div className={pageWrapClass}>
+      <IdleReminder />
       <div className="mx-auto flex w-full max-w-xl flex-col gap-[var(--space-lg)] px-6 py-12">
         {count != null && (
           <div className={`${cardSmClass} flex items-center justify-between`}>
@@ -450,6 +461,19 @@ export function IntakeForm({
             Drukuj etykietę
           </button>
         </div>
+      )}
+
+      {employeeId && ownItems && todayWarsaw && (
+        <IntakeStatsSection
+          items={ownItems}
+          displayNames={{ [employeeId]: employeeName ?? "Ty" }}
+          todayWarsaw={todayWarsaw}
+          heading="Twoje przyjęcia towaru"
+          caveatText="Starsze towary (sprzed 16.08.2026) nie mają zapisanego, kto je przyjął."
+          emptyStateText="Nie przyjąłeś jeszcze żadnego towaru w tym okresie."
+          chartTitle="Chronologia Twoich przyjęć"
+          chartSubtitle="Każda kropka to jeden dodany przez Ciebie towar, z dokładnym czasem."
+        />
       )}
     </div>
     </div>
