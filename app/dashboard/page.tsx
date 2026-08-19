@@ -5,7 +5,8 @@ import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { computeLinkedSales } from "@/lib/batch-stats";
 import type { SaleRow } from "@/lib/sales-types";
-import { IntakeFrequencyChart, type IntakeEvent } from "./IntakeFrequencyChart";
+import { IntakeStatsSection, type IntakeItem } from "./IntakeStatsSection";
+import { warsawDateString } from "@/lib/warsaw-time";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
 const PROCESSING_STATUSES = [
@@ -27,26 +28,6 @@ function Tile({ label, value }: { label: string; value: React.ReactNode }) {
         {value}
       </p>
     </div>
-  );
-}
-
-// "Today" by the calendar date in Warsaw, not the server's UTC clock —
-// Vercel functions run in UTC, so for the first 1-2 hours of every Warsaw
-// day a naive `new Date().toISOString().slice(0,10)` would still report
-// yesterday's date.
-function warsawDateString(date: Date): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Warsaw" }).format(date);
-}
-
-// sv-SE reliably formats hour 0 as "00" rather than the "24" some locales
-// produce for hour12:false at midnight.
-function warsawHour(date: Date): number {
-  return Number(
-    new Intl.DateTimeFormat("sv-SE", {
-      timeZone: "Europe/Warsaw",
-      hour: "2-digit",
-      hour12: false,
-    }).format(date)
   );
 }
 
@@ -120,47 +101,14 @@ export default async function DashboardPage() {
     }
   }
 
-  const todaysIntakeByEmployee = new Map<string, number>();
-  for (const item of items ?? []) {
-    if (!item.created_by || !item.created_at) continue;
-    if (warsawDateString(new Date(item.created_at)) !== todayWarsaw) continue;
-    todaysIntakeByEmployee.set(
-      item.created_by,
-      (todaysIntakeByEmployee.get(item.created_by) ?? 0) + 1
-    );
-  }
-  const todaysIntakeRows = Array.from(todaysIntakeByEmployee.entries())
-    .map(([employeeId, count]) => ({
-      name: displayNameByEmployeeId.get(employeeId) ?? "Nieznany",
-      count,
-    }))
-    .sort((a, b) => b.count - a.count);
+  // Full history, not just today — the period switcher (day/week/month)
+  // in IntakeStatsSection does its own client-side filtering, same pattern
+  // as the other pages' PeriodFilterControl.
+  const intakeItems: IntakeItem[] = (items ?? [])
+    .filter((item) => item.created_by && item.created_at)
+    .map((item) => ({ employeeId: item.created_by as string, createdAt: item.created_at as string }));
 
-  // Same-order employee list fixes the timeline's row order — busiest
-  // person's row stays stable as the day goes on rather than shuffling.
-  const activeEmployeeNames = todaysIntakeRows.map((r) => r.name);
-
-  // One point per item, at its exact time of day — the hourly-bucket
-  // version hid *when* within the hour something happened; this keeps
-  // "08:30 added, 08:33 added, 08:36 added" visible directly.
-  const intakeEvents: IntakeEvent[] = [];
-  for (const item of items ?? []) {
-    if (!item.created_by || !item.created_at) continue;
-    const createdAt = new Date(item.created_at);
-    if (warsawDateString(createdAt) !== todayWarsaw) continue;
-    const hour = warsawHour(createdAt);
-    const minute = Number(
-      new Intl.DateTimeFormat("sv-SE", {
-        timeZone: "Europe/Warsaw",
-        minute: "2-digit",
-      }).format(createdAt)
-    );
-    intakeEvents.push({
-      employee: displayNameByEmployeeId.get(item.created_by) ?? "Nieznany",
-      minutes: hour * 60 + minute,
-      time: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
-    });
-  }
+  const displayNames = Object.fromEntries(displayNameByEmployeeId);
 
   const rows = items ?? [];
 
@@ -262,39 +210,7 @@ export default async function DashboardPage() {
           <Tile label="Sprzedano" value={sold} />
         </div>
 
-        <div className="flex flex-col gap-[var(--gap-default)]">
-          <h2 className="text-lg font-semibold text-[var(--color-text)]">
-            Dzisiaj: towary przyjęte wg pracownika
-          </h2>
-          <p className={`text-xs ${mutedTextClass}`}>
-            Liczone tylko od teraz — starsze towary nie mają zapisanego, kto je przyjął.
-          </p>
-          <div className={`overflow-x-auto ${cardClass} !p-0`}>
-            <table className="w-full min-w-[320px] text-left text-sm">
-              <tbody>
-                {todaysIntakeRows.map((row) => (
-                  <tr
-                    key={row.name}
-                    className="[&:not(:last-child)]:border-b [&:not(:last-child)]:border-[var(--color-bg)]"
-                  >
-                    <td className="px-4 py-3 text-[var(--color-text)]">{row.name}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-[var(--color-text)]">
-                      {row.count}
-                    </td>
-                  </tr>
-                ))}
-                {todaysIntakeRows.length === 0 && (
-                  <tr>
-                    <td className={`px-4 py-6 text-center text-sm ${mutedTextClass}`}>
-                      Dzisiaj nikt jeszcze nie przyjął towaru.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <IntakeFrequencyChart events={intakeEvents} employeeNames={activeEmployeeNames} />
-        </div>
+        <IntakeStatsSection items={intakeItems} displayNames={displayNames} todayWarsaw={todayWarsaw} />
 
         <div className="grid grid-cols-1 gap-[var(--space-md)] sm:grid-cols-3">
           <Tile
