@@ -40,7 +40,7 @@ export default async function DashboardPage() {
   }
 
   // Independent of each other — fire together instead of one after another.
-  const [{ data: items }, { data: batches }, { data: expenseRows }, sales, { data: employees }] =
+  const [{ data: items }, { data: batches }, { data: expenseRows }, sales, { data: employees }, { data: photoLog }] =
     await Promise.all([
       supabaseAdmin
         .from("items")
@@ -77,6 +77,14 @@ export default async function DashboardPage() {
         .from("employees")
         .select("id, full_name, created_at")
         .order("created_at", { ascending: true }),
+      // "Photographing" = the received → photos_uploaded transition, the
+      // one point in the pipeline after intake that's attributed to a
+      // specific employee (changed_by, wired up alongside this feature).
+      supabaseAdmin
+        .from("item_status_log")
+        .select("changed_by, changed_at")
+        .eq("to_status", "photos_uploaded")
+        .not("changed_by", "is", null),
     ]);
 
   const todayWarsaw = warsawDateString(new Date());
@@ -109,6 +117,10 @@ export default async function DashboardPage() {
     .map((item) => ({ employeeId: item.created_by as string, createdAt: item.created_at as string }));
 
   const displayNames = Object.fromEntries(displayNameByEmployeeId);
+
+  const photoItems: IntakeItem[] = (photoLog ?? [])
+    .filter((log) => log.changed_by && log.changed_at)
+    .map((log) => ({ employeeId: log.changed_by as string, createdAt: log.changed_at as string }));
 
   const rows = items ?? [];
 
@@ -211,6 +223,17 @@ export default async function DashboardPage() {
         </div>
 
         <IntakeStatsSection items={intakeItems} displayNames={displayNames} todayWarsaw={todayWarsaw} />
+
+        <IntakeStatsSection
+          items={photoItems}
+          displayNames={displayNames}
+          todayWarsaw={todayWarsaw}
+          heading="Towary sfotografowane wg pracownika"
+          caveatText="Liczone od 19.08.2026 — starsze zdjęcia nie mają zapisanego, kto je zrobił."
+          emptyStateText="Nikt nie sfotografował towaru w tym okresie."
+          chartTitle="Chronologia fotografowania towarów"
+          chartSubtitle="Każda kropka to jeden sfotografowany towar, z dokładnym czasem."
+        />
 
         <div className="grid grid-cols-1 gap-[var(--space-md)] sm:grid-cols-3">
           <Tile

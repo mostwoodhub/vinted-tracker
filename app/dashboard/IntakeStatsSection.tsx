@@ -42,10 +42,20 @@ export function IntakeStatsSection({
   items,
   displayNames,
   todayWarsaw,
+  heading = "Towary przyjęte wg pracownika",
+  caveatText = "Starsze towary (sprzed 16.08.2026) nie mają zapisanego, kto je przyjął.",
+  emptyStateText = "Nikt nie przyjął towaru w tym okresie.",
+  chartTitle = "Chronologia przyjmowania towarów",
+  chartSubtitle = "Każda kropka to jeden dodany towar, z dokładnym czasem.",
 }: {
   items: IntakeItem[];
   displayNames: Record<string, string>;
   todayWarsaw: string;
+  heading?: string;
+  caveatText?: string;
+  emptyStateText?: string;
+  chartTitle?: string;
+  chartSubtitle?: string;
 }) {
   const [mode, setMode] = useState<Mode>("day");
   const [dayCursor, setDayCursor] = useState(todayWarsaw);
@@ -164,7 +174,7 @@ export function IntakeStatsSection({
     <div className="flex flex-col gap-[var(--gap-default)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-[var(--color-text)]">
-          Towary przyjęte wg pracownika
+          {heading}
         </h2>
         <div className="flex items-center gap-2">
           <button type="button" className={pillClass(mode === "day")} onClick={() => setMode("day")}>
@@ -212,9 +222,7 @@ export function IntakeStatsSection({
         )}
       </div>
 
-      <p className={`text-xs ${mutedTextClass}`}>
-        Starsze towary (sprzed 16.08.2026) nie mają zapisanego, kto je przyjął.
-      </p>
+      <p className={`text-xs ${mutedTextClass}`}>{caveatText}</p>
 
       <div className={`overflow-x-auto ${cardClass} !p-0`}>
         <table className="w-full min-w-[320px] text-left text-sm">
@@ -233,7 +241,7 @@ export function IntakeStatsSection({
             {rows.length === 0 && (
               <tr>
                 <td className={`px-4 py-6 text-center text-sm ${mutedTextClass}`}>
-                  Nikt nie przyjął towaru w tym okresie.
+                  {emptyStateText}
                 </td>
               </tr>
             )}
@@ -242,8 +250,8 @@ export function IntakeStatsSection({
       </div>
 
       <IntakeFrequencyChart
-        title="Chronologia przyjmowania towarów"
-        subtitle="Każda kropka to jeden dodany towar, z dokładnym czasem."
+        title={chartTitle}
+        subtitle={chartSubtitle}
         events={events}
         employeeNames={activeNames}
         domain={domain}

@@ -70,6 +70,7 @@ export async function uploadFinalPhotos(
       item_id: itemId,
       from_status: "received",
       to_status: "photos_uploaded",
+      changed_by: access.employee.id,
     });
 
     after(async () => {
