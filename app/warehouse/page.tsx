@@ -6,6 +6,7 @@ import {
   daysSince,
   PROCESSING_STATUSES,
 } from "@/lib/item-aging";
+import { loadItemPhotoUrls } from "@/lib/item-photos";
 import { WarehouseCards, type WarehouseCardItem } from "./WarehouseCards";
 
 export default async function WarehousePage() {
@@ -35,62 +36,9 @@ export default async function WarehousePage() {
     .map((b) => b.label)
     .filter((v): v is string => !!v);
 
-  async function loadPhotoUrls(): Promise<Map<string, string>> {
-    const photoUrlByItem = new Map<string, string>();
-    if (ids.length === 0) return photoUrlByItem;
-
-    const { data: photos } = await supabaseAdmin
-      .from("item_photos")
-      .select("item_id, storage_path, is_working_photo")
-      .in("item_id", ids)
-      .order("uploaded_at", { ascending: true });
-
-    const finalByItem = new Map<string, string>();
-    const workingByItem = new Map<string, string>();
-
-    for (const photo of photos ?? []) {
-      if (photo.is_working_photo) {
-        if (!workingByItem.has(photo.item_id)) {
-          workingByItem.set(photo.item_id, photo.storage_path);
-        }
-      } else if (!finalByItem.has(photo.item_id)) {
-        finalByItem.set(photo.item_id, photo.storage_path);
-      }
-    }
-
-    const pathByItem = new Map<string, string>();
-    for (const id of ids) {
-      // Working/intake photo always wins for the list thumbnail — it's the
-      // consistent reference shot taken at intake, so the list shouldn't
-      // silently swap it for a final publication photo mid-workflow.
-      const path = workingByItem.get(id) ?? finalByItem.get(id);
-      if (path) pathByItem.set(id, path);
-    }
-
-    const paths = Array.from(pathByItem.values());
-    if (paths.length === 0) return photoUrlByItem;
-
-    const { data: signed } = await supabaseAdmin.storage
-      .from("item-photos")
-      .createSignedUrls(paths, 60 * 60);
-
-    const signedUrlByPath = new Map<string, string>();
-    for (const entry of signed ?? []) {
-      if (entry.signedUrl) {
-        signedUrlByPath.set(entry.path ?? "", entry.signedUrl);
-      }
-    }
-
-    for (const [itemId, path] of pathByItem) {
-      const url = signedUrlByPath.get(path);
-      if (url) photoUrlByItem.set(itemId, url);
-    }
-    return photoUrlByItem;
-  }
-
   // Neither depends on the other's result — only on `ids` — so run together.
-  const [photoUrlByItem, lastActivityByItem] = await Promise.all([
-    loadPhotoUrls(),
+  const [{ photoUrlByItem, thumbUrlByItem }, lastActivityByItem] = await Promise.all([
+    loadItemPhotoUrls(ids),
     fetchLastActivityByItem(ids),
   ]);
   // This is a Server Component — it runs once per request on the server,
@@ -109,6 +57,7 @@ export default async function WarehousePage() {
     return {
       ...row,
       photoUrl: photoUrlByItem.get(row.id) ?? null,
+      thumbUrl: thumbUrlByItem.get(row.id) ?? null,
       daysInStatus,
     };
   });

@@ -16,14 +16,32 @@ export async function fetchLastActivityByItem(
   const map = new Map<string, string>();
   if (itemIds.length === 0) return map;
 
-  const { data } = await supabaseAdmin
-    .from("item_status_log")
-    .select("item_id, changed_at")
-    .in("item_id", itemIds)
-    .order("changed_at", { ascending: false });
+  // .in("item_id", itemIds) puts every id straight into the request URL —
+  // past ~200 items that blows the 16KB header limit and the query fails
+  // outright (HeadersOverflowError), not just slowly. Chunking keeps each
+  // request's URL short regardless of how large the warehouse grows. Each
+  // item's log rows are entirely within one chunk (chunking splits by id,
+  // not by time), so per-chunk ordering still preserves "most recent wins"
+  // below even though chunks aren't merged in global order.
+  const ID_CHUNK_SIZE = 150;
+  const idChunks: string[][] = [];
+  for (let i = 0; i < itemIds.length; i += ID_CHUNK_SIZE) {
+    idChunks.push(itemIds.slice(i, i + ID_CHUNK_SIZE));
+  }
+  const chunkResults = await Promise.all(
+    idChunks.map((chunk) =>
+      supabaseAdmin
+        .from("item_status_log")
+        .select("item_id, changed_at")
+        .in("item_id", chunk)
+        .order("changed_at", { ascending: false })
+    )
+  );
 
-  for (const row of data ?? []) {
-    if (!map.has(row.item_id)) map.set(row.item_id, row.changed_at);
+  for (const { data } of chunkResults) {
+    for (const row of data ?? []) {
+      if (!map.has(row.item_id)) map.set(row.item_id, row.changed_at);
+    }
   }
 
   return map;

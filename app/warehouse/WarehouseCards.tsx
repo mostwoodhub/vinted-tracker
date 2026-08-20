@@ -34,6 +34,7 @@ export type WarehouseCardItem = {
   status: string;
   batches: { id: string; label: string | null } | null;
   photoUrl: string | null;
+  thumbUrl: string | null;
   daysInStatus?: number | null;
 };
 
@@ -763,7 +764,7 @@ export function WarehouseCards({
                 {item.photoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={item.photoUrl}
+                    src={item.thumbUrl ?? item.photoUrl}
                     alt=""
                     onClick={() => setZoomedUrl(item.photoUrl)}
                     className="h-16 w-16 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover transition-opacity hover:opacity-80"
