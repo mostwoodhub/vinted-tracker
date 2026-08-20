@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 // /reset-password must stay public: the recovery link's session lives only
@@ -32,7 +33,18 @@ export async function updateSession(request: NextRequest) {
 
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  // getUser() always makes a live call to Supabase's auth server, so on a
+  // flaky mobile connection a transient network hiccup looks identical to
+  // "no session" — this was force-logging out real, still-valid sessions on
+  // basically any page load. Only a genuine missing/invalid session should
+  // redirect to /login; a retryable fetch error should just let the request
+  // through with whatever session state the request already carried.
+  if (error && isAuthRetryableFetchError(error)) {
+    return supabaseResponse;
+  }
 
   const isPublicPath = PUBLIC_PATHS.includes(request.nextUrl.pathname);
 
