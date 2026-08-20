@@ -15,6 +15,29 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+// Cheap existence check — no signing calls at all, just which items have at
+// least one photo row. Used to decide whether a list row should render a
+// lazy-loading thumbnail slot or the plain "no photo" placeholder, without
+// paying for a signed URL (thumbnail or full-res) up front for every item
+// on the page — see loadItemPhotoUrls, called only for the ids actually
+// visible on screen.
+export async function loadPhotoAvailability(ids: string[]): Promise<Set<string>> {
+  const available = new Set<string>();
+  if (ids.length === 0) return available;
+
+  const chunkResults = await Promise.all(
+    chunk(ids, ID_CHUNK_SIZE).map((idChunk) =>
+      supabaseAdmin.from("item_photos").select("item_id").in("item_id", idChunk)
+    )
+  );
+  for (const { data } of chunkResults) {
+    for (const row of data ?? []) {
+      available.add(row.item_id);
+    }
+  }
+  return available;
+}
+
 // List thumbnail (small, transformed) + full-resolution zoom URL for each
 // item's photo — working/intake photo always wins over a final publication
 // photo, so the list doesn't silently swap thumbnails mid-workflow.

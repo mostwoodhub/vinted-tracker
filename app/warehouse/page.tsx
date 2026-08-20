@@ -6,7 +6,7 @@ import {
   daysSince,
   PROCESSING_STATUSES,
 } from "@/lib/item-aging";
-import { loadItemPhotoUrls } from "@/lib/item-photos";
+import { loadPhotoAvailability } from "@/lib/item-photos";
 import { WarehouseCards, type WarehouseCardItem } from "./WarehouseCards";
 
 export default async function WarehousePage() {
@@ -30,15 +30,18 @@ export default async function WarehousePage() {
     supabaseAdmin.from("batches").select("label").order("label", { ascending: true }),
   ]);
 
-  const rows = (items ?? []) as unknown as Omit<WarehouseCardItem, "photoUrl">[];
+  const rows = (items ?? []) as unknown as Omit<WarehouseCardItem, "hasPhoto">[];
   const ids = rows.map((row) => row.id);
   const allBatchLabels = (batchRows ?? [])
     .map((b) => b.label)
     .filter((v): v is string => !!v);
 
+  // Just "does this item have a photo at all" — cheap, no signing calls.
+  // The actual signed URLs are fetched lazily by the client, per-row, only
+  // for cards that scroll into view (see app/api/item-thumbnails).
   // Neither depends on the other's result — only on `ids` — so run together.
-  const [{ photoUrlByItem, thumbUrlByItem }, lastActivityByItem] = await Promise.all([
-    loadItemPhotoUrls(ids),
+  const [photoAvailability, lastActivityByItem] = await Promise.all([
+    loadPhotoAvailability(ids),
     fetchLastActivityByItem(ids),
   ]);
   // This is a Server Component — it runs once per request on the server,
@@ -56,8 +59,7 @@ export default async function WarehousePage() {
 
     return {
       ...row,
-      photoUrl: photoUrlByItem.get(row.id) ?? null,
-      thumbUrl: thumbUrlByItem.get(row.id) ?? null,
+      hasPhoto: photoAvailability.has(row.id),
       daysInStatus,
     };
   });

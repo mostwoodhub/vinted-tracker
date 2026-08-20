@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useActionState,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -33,8 +34,7 @@ export type WarehouseCardItem = {
   cost_price: number | null;
   status: string;
   batches: { id: string; label: string | null } | null;
-  photoUrl: string | null;
-  thumbUrl: string | null;
+  hasPhoto: boolean;
   daysInStatus?: number | null;
 };
 
@@ -353,6 +353,137 @@ function BulkActionsBar({
   );
 }
 
+type PhotoUrls = { photoUrl: string | null; thumbUrl: string | null };
+
+const THUMBNAIL_BATCH_DEBOUNCE_MS = 120;
+const MAX_IDS_PER_BATCH = 60;
+
+// Photo URLs are signed on demand, only for rows that actually scroll into
+// view — signing every item's photo up front on every page load is what
+// silently failed/slowed once the warehouse passed a few hundred items
+// (see lib/item-photos.ts). Requests are debounced and batched so a fast
+// scroll through many rows doesn't fire one request per row.
+function useLazyPhotoUrls() {
+  const [cache, setCache] = useState<Record<string, PhotoUrls>>({});
+  const pendingRef = useRef<Set<string>>(new Set());
+  const requestedRef = useRef<Set<string>>(new Set());
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // A plain hoisted function declaration (not useCallback) — it only ever
+  // touches refs and the stable setCache setter, never reactive props or
+  // state, so redefining it each render is harmless, and being hoisted
+  // lets it call itself below without a self-reference-before-declaration.
+  function flush() {
+    timerRef.current = null;
+    const batch = Array.from(pendingRef.current).slice(0, MAX_IDS_PER_BATCH);
+    if (batch.length === 0) return;
+    batch.forEach((id) => pendingRef.current.delete(id));
+
+    fetch("/api/item-thumbnails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: batch }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: Record<string, PhotoUrls> | null) => {
+        if (!data) throw new Error("failed");
+        setCache((prev) => ({ ...prev, ...data }));
+      })
+      .catch(() => {
+        // Best-effort — leave those as unresolved; scrolling away and back
+        // re-triggers the intersection observer and retries them.
+        batch.forEach((id) => requestedRef.current.delete(id));
+      });
+
+    if (pendingRef.current.size > 0) {
+      timerRef.current = setTimeout(flush, 0);
+    }
+  }
+
+  // flush only closes over refs and the stable setCache setter, so a stale
+  // reference to whichever render's flush this captures is behaviorally
+  // identical — omitting it from deps is intentional, not an oversight.
+  const request = useCallback((id: string) => {
+    if (requestedRef.current.has(id)) return;
+    requestedRef.current.add(id);
+    pendingRef.current.add(id);
+    if (!timerRef.current) {
+      timerRef.current = setTimeout(flush, THUMBNAIL_BATCH_DEBOUNCE_MS);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return { cache, request };
+}
+
+function LazyPhotoThumb({
+  itemId,
+  hasPhoto,
+  resolved,
+  onRequest,
+  onZoom,
+}: {
+  itemId: string;
+  hasPhoto: boolean;
+  resolved?: PhotoUrls;
+  onRequest: (id: string) => void;
+  onZoom: (url: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasPhoto || resolved) return;
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          onRequest(itemId);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasPhoto, resolved, itemId, onRequest]);
+
+  if (!hasPhoto) {
+    return (
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-2xl">
+        📦
+      </div>
+    );
+  }
+
+  if (resolved) {
+    const src = resolved.thumbUrl ?? resolved.photoUrl;
+    if (!src) {
+      return (
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-2xl">
+          📦
+        </div>
+      );
+    }
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        onClick={() => onZoom(resolved.photoUrl ?? src)}
+        className="h-16 w-16 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover transition-opacity hover:opacity-80"
+      />
+    );
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="h-16 w-16 shrink-0 animate-pulse rounded-[var(--radius-sm)] bg-[var(--color-bg)]"
+    />
+  );
+}
+
 export function WarehouseCards({
   items,
   defaultStatusFilter = "ready",
@@ -406,6 +537,7 @@ export function WarehouseCards({
   const [sortBy, setSortBy] = useState<"numeracja" | "dodania">("numeracja");
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [zoomedUrl, setZoomedUrl] = useState<string | null>(null);
+  const { cache: photoCache, request: requestThumbnail } = useLazyPhotoUrls();
   const [deletePending, startDeleteTransition] = useTransition();
   const [statusPending, startStatusTransition] = useTransition();
   const [pricePending, startPriceTransition] = useTransition();
@@ -761,19 +893,13 @@ export function WarehouseCards({
                   />
                 )}
 
-                {item.photoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.thumbUrl ?? item.photoUrl}
-                    alt=""
-                    onClick={() => setZoomedUrl(item.photoUrl)}
-                    className="h-16 w-16 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover transition-opacity hover:opacity-80"
-                  />
-                ) : (
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-2xl">
-                    📦
-                  </div>
-                )}
+                <LazyPhotoThumb
+                  itemId={item.id}
+                  hasPhoto={item.hasPhoto}
+                  resolved={photoCache[item.id]}
+                  onRequest={requestThumbnail}
+                  onZoom={setZoomedUrl}
+                />
 
                 <div className="flex min-w-0 flex-1 flex-col gap-1 sm:hidden">
                   <Link
