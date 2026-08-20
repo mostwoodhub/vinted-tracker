@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { createItem, type IntakeState } from "./actions";
+import { checkLegacyNumber, createItem, type IntakeState, type LegacyNumberCheckResult } from "./actions";
 import { FileDropzone } from "@/app/FileDropzone";
 import { IdleReminder } from "@/app/IdleReminder";
 import { IntakeStatsSection, type IntakeItem } from "@/app/dashboard/IntakeStatsSection";
@@ -24,6 +25,16 @@ import {
   pageWrapClass,
 } from "@/lib/ui-classes";
 
+const ITEM_STATUS_LABELS: Record<string, string> = {
+  received: "Przyjęto",
+  photos_uploaded: "Zdjęcia",
+  ai_card_ready: "Karta AI",
+  ready_to_publish: "Gotowe do publikacji",
+  published: "Opublikowano",
+  sold: "Sprzedano",
+  returned: "Zwrot",
+};
+
 const DEFECTS = [
   "Zarysowania",
   "Zabrudzenia",
@@ -34,6 +45,15 @@ const DEFECTS = [
   "Dziurki na zapiętkach (lub 1 na 1 zapiętce)",
   "Trzeba podkleić",
 ];
+
+// Client-side mirror of lib/batches.ts's deriveBatchLabelFromLegacyNumber —
+// that one is server-only (imports supabaseAdmin's neighbors), so it can't
+// be imported directly into this client component. Kept as a tiny, stable
+// pure function so both copies are trivial to keep in sync.
+function deriveBatchLabelFromLegacyNumber(legacyNumber: string): string | null {
+  const match = legacyNumber.trim().match(/^([A-Za-z]+)\d+$/);
+  return match ? match[1] : null;
+}
 
 function SubmitButton({ disabled = false }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
@@ -140,10 +160,19 @@ export function IntakeForm({
   const photosInputRef = useRef<HTMLInputElement>(null);
   const [compressingPhotos, setCompressingPhotos] = useState(false);
   const [condition, setCondition] = useState("");
-  // Was a separate "Przyjęcie (magazyn)" page/form before — merged into one,
-  // since the only real difference was whether the old-number field showed.
-  const [isLegacyItem, setIsLegacyItem] = useState(false);
+  // Was a separate "Przyjęcie (magazyn)" page/form before — merged into
+  // one, and later the old/new split within this form was dropped too:
+  // every item just gets a letter-prefixed number now, one field, always.
   const [legacyNumber, setLegacyNumber] = useState("");
+  // Auto-filled from legacyNumber's leading letters the moment enough of
+  // the number is typed to derive one — only while still empty, so it
+  // never overwrites a Partia the employee already typed by hand.
+  const [batchLabel, setBatchLabel] = useState("");
+  function handleLegacyNumberChange(value: string) {
+    setLegacyNumber(value);
+    const derived = deriveBatchLabelFromLegacyNumber(value);
+    if (derived && !batchLabel) setBatchLabel(derived);
+  }
   // Starts from the server-computed guess (based on the last 10 old numbers
   // typed in); bumped by one locally after each save so a whole batch of
   // sequential items can be entered without retyping the number pattern
@@ -153,12 +182,41 @@ export function IntakeForm({
   // their own count tick up immediately instead of only on next page load.
   const [count, setCount] = useState(todayCount);
 
-  function handleLegacyToggle(checked: boolean) {
-    setIsLegacyItem(checked);
-    if (checked && !legacyNumber && nextSuggestion) {
-      setLegacyNumber(nextSuggestion);
+  // As-you-type "does this number already exist" lookup, so the employee
+  // can see (and look at a photo of) what's already under that number
+  // before they even finish filling out the rest of the form — the
+  // submit-time check in createItem still runs regardless, as the actual
+  // safety net.
+  const [dupCheck, setDupCheck] = useState<LegacyNumberCheckResult | null>(null);
+  const [checkingDup, setCheckingDup] = useState(false);
+  const legacyNumberLatestRef = useRef(legacyNumber);
+  useEffect(() => {
+    legacyNumberLatestRef.current = legacyNumber;
+  });
+
+  useEffect(() => {
+    const trimmed = legacyNumber.trim();
+    // Clearing derived lookup state when the field empties out, not
+    // mirroring a prop into state — legitimate direct setState here.
+    if (!trimmed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDupCheck(null);
+      setCheckingDup(false);
+      return;
     }
-  }
+    setCheckingDup(true);
+    const timer = setTimeout(() => {
+      checkLegacyNumber(trimmed).then((result) => {
+        // Discard a response that's no longer for the current field value
+        // (the user kept typing while this request was in flight).
+        if (legacyNumberLatestRef.current.trim() === trimmed) {
+          setDupCheck(result);
+          setCheckingDup(false);
+        }
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [legacyNumber]);
 
   function handleAddAnyway() {
     if (confirmDuplicateRef.current) confirmDuplicateRef.current.value = "true";
@@ -185,7 +243,7 @@ export function IntakeForm({
   }
 
   useEffect(() => {
-    // Resets the form ref and local `condition`/`isLegacyItem`/`legacyNumber`
+    // Resets the form ref and local `condition`/`legacyNumber`/`batchLabel`
     // state after a successful submission. Kept as an effect (rather than
     // the render-time previous-state pattern) because it touches
     // formRef.current, and refs must not be read or written during render.
@@ -193,13 +251,14 @@ export function IntakeForm({
       formRef.current?.reset();
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCondition("");
-      setIsLegacyItem(false);
       setCount((c) => (c ?? 0) + 1);
       const parsed = parseShoeId(legacyNumber);
       if (parsed) {
         setNextSuggestion(`${parsed.prefix}${parsed.internalNumber + 1}`);
       }
       setLegacyNumber("");
+      setBatchLabel("");
+      setDupCheck(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
@@ -276,6 +335,77 @@ export function IntakeForm({
         </div>
 
         <div className="flex flex-col gap-1.5">
+          <label htmlFor="legacyNumber" className={labelClass}>
+            Numer (z literą)
+          </label>
+          <input
+            id="legacyNumber"
+            name="legacyNumber"
+            type="text"
+            value={legacyNumber}
+            onChange={(e) => handleLegacyNumberChange(e.target.value)}
+            className={inputClass}
+          />
+          {nextSuggestion && (
+            <p className={`text-xs ${mutedTextClass}`}>
+              Podpowiedź na podstawie ostatnich numerów: {nextSuggestion}
+              {legacyNumber !== nextSuggestion && (
+                <>
+                  {" "}
+                  ·{" "}
+                  <button
+                    type="button"
+                    onClick={() => handleLegacyNumberChange(nextSuggestion)}
+                    className="underline hover:text-[var(--color-text)]"
+                  >
+                    użyj
+                  </button>
+                </>
+              )}
+            </p>
+          )}
+
+          {checkingDup && (
+            <p className={`text-xs ${mutedTextClass}`}>Sprawdzanie…</p>
+          )}
+          {!checkingDup && dupCheck?.exists && (
+            <div className={`${noticeWarningClass} flex-row items-center gap-3`}>
+              {dupCheck.thumbUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={dupCheck.thumbUrl}
+                  alt=""
+                  className="h-12 w-12 shrink-0 rounded-[var(--radius-sm)] object-cover"
+                />
+              ) : (
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-xl">
+                  📦
+                </div>
+              )}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <p className="truncate">
+                  ⚠️ Ten numer już jest: <strong>{dupCheck.displayNumber}</strong>
+                </p>
+                <p className={`truncate text-xs ${mutedTextClass}`}>
+                  {dupCheck.brand ?? "—"} {dupCheck.model ?? ""} ·{" "}
+                  {ITEM_STATUS_LABELS[dupCheck.status] ?? dupCheck.status}
+                </p>
+              </div>
+              <Link
+                href={`/items/${dupCheck.itemId}`}
+                target="_blank"
+                className="shrink-0 whitespace-nowrap text-xs font-medium underline hover:text-[var(--color-text)]"
+              >
+                Zobacz →
+              </Link>
+            </div>
+          )}
+          {!checkingDup && dupCheck?.exists === false && legacyNumber.trim() && (
+            <p className="text-xs text-[var(--color-success)]">✓ Numer wolny</p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
           <label htmlFor="batchLabel" className={labelClass}>
             Partia
           </label>
@@ -285,6 +415,8 @@ export function IntakeForm({
             type="text"
             list="batch-options"
             autoComplete="off"
+            value={batchLabel}
+            onChange={(e) => setBatchLabel(e.target.value)}
             className={inputClass}
           />
           <datalist id="batch-options">
@@ -293,50 +425,6 @@ export function IntakeForm({
             ))}
           </datalist>
         </div>
-
-        <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
-          <input
-            type="checkbox"
-            checked={isLegacyItem}
-            onChange={(e) => handleLegacyToggle(e.target.checked)}
-            className={checkboxClass}
-          />
-          To stary towar (ma stary numer z poprzedniego systemu)
-        </label>
-
-        {isLegacyItem && (
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="legacyNumber" className={labelClass}>
-              Stary numer
-            </label>
-            <input
-              id="legacyNumber"
-              name="legacyNumber"
-              type="text"
-              value={legacyNumber}
-              onChange={(e) => setLegacyNumber(e.target.value)}
-              className={inputClass}
-            />
-            {nextSuggestion && (
-              <p className={`text-xs ${mutedTextClass}`}>
-                Podpowiedź na podstawie ostatnich numerów: {nextSuggestion}
-                {legacyNumber !== nextSuggestion && (
-                  <>
-                    {" "}
-                    ·{" "}
-                    <button
-                      type="button"
-                      onClick={() => setLegacyNumber(nextSuggestion)}
-                      className="underline hover:text-[var(--color-text)]"
-                    >
-                      użyj
-                    </button>
-                  </>
-                )}
-              </p>
-            )}
-          </div>
-        )}
 
         <fieldset className="flex flex-col gap-2">
           <legend className={labelClass}>Stan butów</legend>

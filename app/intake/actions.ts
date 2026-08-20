@@ -20,6 +20,73 @@ export type IntakeState = {
   error?: string;
 };
 
+export type LegacyNumberCheckResult =
+  | { exists: false }
+  | {
+      exists: true;
+      itemId: string;
+      displayNumber: string;
+      brand: string | null;
+      model: string | null;
+      status: string;
+      thumbUrl: string | null;
+    };
+
+// Live, as-you-type lookup — lets the employee see *what* is already under
+// that number (with a photo, if there is one) before they finish filling
+// out the rest of the form, instead of only finding out from a warning
+// after they hit Zapisz. The submit-time check in createItem stays as the
+// actual safety net (race conditions, JS disabled, etc.) — this is purely
+// informational.
+export async function checkLegacyNumber(legacyNumber: string): Promise<LegacyNumberCheckResult> {
+  const access = await checkRole("intake", "admin");
+  if (!access.ok) return { exists: false };
+
+  const trimmed = legacyNumber.trim();
+  if (!trimmed) return { exists: false };
+
+  const { data } = await supabaseAdmin
+    .from("items")
+    .select("id, internal_number, brand, model, status, batches(label)")
+    .eq("legacy_number", trimmed)
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return { exists: false };
+
+  const batches = data.batches as { label: string | null } | { label: string | null }[] | null;
+  const batchLabel = Array.isArray(batches) ? (batches[0]?.label ?? null) : (batches?.label ?? null);
+
+  const { data: photoRow } = await supabaseAdmin
+    .from("item_photos")
+    .select("storage_path")
+    .eq("item_id", data.id)
+    .eq("is_working_photo", true)
+    .limit(1)
+    .maybeSingle();
+
+  let thumbUrl: string | null = null;
+  if (photoRow) {
+    const { data: signed } = await supabaseAdmin.storage
+      .from("item-photos")
+      .createSignedUrl(photoRow.storage_path, 300, {
+        transform: { width: 128, height: 128, resize: "cover" },
+      });
+    thumbUrl = signed?.signedUrl ?? null;
+  }
+
+  return {
+    exists: true,
+    itemId: data.id,
+    displayNumber: formatItemNumber(batchLabel, data.internal_number, trimmed),
+    brand: data.brand,
+    model: data.model,
+    status: data.status,
+    thumbUrl,
+  };
+}
+
 export async function createItem(
   _prevState: IntakeState,
   formData: FormData
