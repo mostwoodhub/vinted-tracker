@@ -7,6 +7,7 @@ import { FileDropzone } from "@/app/FileDropzone";
 import { IdleReminder } from "@/app/IdleReminder";
 import { IntakeStatsSection, type IntakeItem } from "@/app/dashboard/IntakeStatsSection";
 import { formatItemNumber } from "@/lib/item-number";
+import { compressImages } from "@/lib/compress-image";
 import { parseShoeId } from "@/lib/item-sale-match";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
 import {
@@ -34,11 +35,11 @@ const DEFECTS = [
   "Trzeba podkleić",
 ];
 
-function SubmitButton() {
+function SubmitButton({ disabled = false }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
 
   return (
-    <button type="submit" disabled={pending} className={buttonPrimaryClass}>
+    <button type="submit" disabled={pending || disabled} className={buttonPrimaryClass}>
       {pending ? "Zapisywanie…" : "Zapisz"}
     </button>
   );
@@ -136,6 +137,8 @@ export function IntakeForm({
   const [state, formAction] = useActionState(createItem, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const confirmDuplicateRef = useRef<HTMLInputElement>(null);
+  const photosInputRef = useRef<HTMLInputElement>(null);
+  const [compressingPhotos, setCompressingPhotos] = useState(false);
   const [condition, setCondition] = useState("");
   // Was a separate "Przyjęcie (magazyn)" page/form before — merged into one,
   // since the only real difference was whether the old-number field showed.
@@ -160,6 +163,25 @@ export function IntakeForm({
   function handleAddAnyway() {
     if (confirmDuplicateRef.current) confirmDuplicateRef.current.value = "true";
     formRef.current?.requestSubmit();
+  }
+
+  // Phone-camera photos (5-12MB each, no resizing anywhere else in the
+  // pipeline) can push a multi-photo submission past the Server Action body
+  // limit, which fails with a bare "Bad Request" before our own code even
+  // runs. Downscaling here — replacing the input's FileList in place —
+  // keeps every upload well under that limit regardless of the original.
+  async function handlePhotosSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    setCompressingPhotos(true);
+    try {
+      const compressed = await compressImages(files);
+      const dt = new DataTransfer();
+      compressed.forEach((f) => dt.items.add(f));
+      if (photosInputRef.current) photosInputRef.current.files = dt.files;
+    } finally {
+      setCompressingPhotos(false);
+    }
   }
 
   useEffect(() => {
@@ -402,11 +424,13 @@ export function IntakeForm({
             Zdjęcia
           </label>
           <FileDropzone
+            ref={photosInputRef}
             id="photos"
             name="photos"
             accept="image/*"
             multiple
-            label="Kliknij lub przeciągnij zdjęcia tutaj"
+            onChange={handlePhotosSelected}
+            label={compressingPhotos ? "Kompresowanie zdjęć…" : "Kliknij lub przeciągnij zdjęcia tutaj"}
           />
           <p className={`text-xs ${mutedTextClass}`}>
             Zdjęcia robocze — nie są publikowane w ogłoszeniu.
@@ -439,7 +463,7 @@ export function IntakeForm({
           </div>
         )}
 
-        <SubmitButton />
+        <SubmitButton disabled={compressingPhotos} />
       </form>
 
       {state.status === "success" && (
