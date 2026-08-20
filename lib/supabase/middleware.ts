@@ -31,17 +31,35 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
+  // getUser() always makes a live call to Supabase's auth server, so on a
+  // flaky mobile connection this request would otherwise sit waiting on
+  // that round trip with no bound — the browser eventually gives up on its
+  // own and shows its own generic "page couldn't load" error, never even
+  // reaching our redirect-vs-pass-through logic below. Racing it against a
+  // timeout means a slow network gets a fast, deliberate fallback instead.
+  const AUTH_CHECK_TIMEOUT_MS = 5000;
+  const result = await Promise.race([
+    supabase.auth.getUser(),
+    new Promise<"timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), AUTH_CHECK_TIMEOUT_MS)
+    ),
+  ]);
+
+  if (result === "timeout") {
+    return supabaseResponse;
+  }
+
   const {
     data: { user },
     error,
-  } = await supabase.auth.getUser();
+  } = result;
 
-  // getUser() always makes a live call to Supabase's auth server, so on a
-  // flaky mobile connection a transient network hiccup looks identical to
-  // "no session" — this was force-logging out real, still-valid sessions on
-  // basically any page load. Only a genuine missing/invalid session should
-  // redirect to /login; a retryable fetch error should just let the request
-  // through with whatever session state the request already carried.
+  // Distinct from the timeout above: getUser() returned, but with a
+  // network-flavored error rather than a clean "no session" — on a flaky
+  // mobile connection that looked identical to "no session" and was
+  // force-logging out real, still-valid sessions on basically any page
+  // load. Only a genuine missing/invalid session should redirect to
+  // /login; a retryable fetch error should just let the request through.
   if (error && isAuthRetryableFetchError(error)) {
     return supabaseResponse;
   }
