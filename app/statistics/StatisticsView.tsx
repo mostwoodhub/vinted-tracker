@@ -13,6 +13,7 @@ import {
   type ProfitPerPairBucket,
 } from "@/lib/sales-stats";
 import { EXPENSE_CATEGORY_ROWS } from "@/lib/expense-categories";
+import { bucketByDays, median, type DayBucket } from "@/lib/day-buckets";
 import type { SaleRow } from "@/lib/sales-types";
 import type { BatchPayback } from "@/lib/batch-stats";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
@@ -23,6 +24,9 @@ export type ExpenseRow = {
   amount: number | null;
   batch_name: string | null;
 };
+
+export type SoldTiming = { soldDate: string; daysToSell: number };
+export type ReturnEvent = { date: string };
 
 export type ProfileRow = {
   id: string;
@@ -173,6 +177,62 @@ function ProfitDistributionTable({ rows }: { rows: ProfitPerPairBucket[] }) {
   );
 }
 
+// Shared shape for "how many days did this sit before X" distributions —
+// same 0-30/30-60/60-90/90+ bands whether it's time-to-sell or inventory
+// age, so the two read the same way at a glance.
+function DayBucketTable({ title, rows }: { title: string; rows: DayBucket[] }) {
+  const total = rows.reduce((sum, r) => sum + r.count, 0);
+  const maxCount = Math.max(1, ...rows.map((r) => r.count));
+
+  return (
+    <div className="flex flex-col gap-[var(--gap-default)]">
+      <h2 className="text-lg font-semibold text-[var(--color-text)]">{title}</h2>
+      <div className={`overflow-x-auto ${cardClass} !p-0`}>
+        <table className="w-full min-w-[420px] text-left text-sm">
+          <thead className={`text-xs ${mutedTextClass}`}>
+            <tr>
+              <th className="px-4 py-3 font-medium">Przedział</th>
+              <th className="px-4 py-3 font-medium">Liczba par</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                key={row.label}
+                className="[&:not(:last-child)]:border-b [&:not(:last-child)]:border-[var(--color-bg)]"
+              >
+                <td className="px-4 py-3 font-medium text-[var(--color-text)]">
+                  {row.label}
+                </td>
+                <td className="px-4 py-3 text-[var(--color-text)]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-8 shrink-0 text-right">{row.count}</span>
+                    <div className="h-2 flex-1 rounded-full bg-[var(--color-bg)]">
+                      <div
+                        className={`h-2 rounded-full ${
+                          row.min >= 90 ? "bg-[var(--color-danger)]" : "bg-[var(--color-accent)]"
+                        }`}
+                        style={{ width: `${(row.count / maxCount) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {total === 0 && (
+              <tr>
+                <td colSpan={2} className={`px-4 py-6 text-center text-sm ${mutedTextClass}`}>
+                  Brak danych.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function BatchPaybackTable({ rows }: { rows: BatchPayback[] }) {
   return (
     <div className="flex flex-col gap-[var(--gap-default)]">
@@ -240,12 +300,16 @@ export function StatisticsView({
   profiles,
   items = [],
   batchPayback = [],
+  soldTimings = [],
+  returnEvents = [],
 }: {
   sales: SaleRow[];
   expenses: ExpenseRow[];
   profiles: ProfileRow[];
   items?: MatchableItem[];
   batchPayback?: BatchPayback[];
+  soldTimings?: SoldTiming[];
+  returnEvents?: ReturnEvent[];
 }) {
   const [period, setPeriod] = useState<PeriodFilterState>(defaultPeriodFilter());
 
@@ -263,6 +327,25 @@ export function StatisticsView({
     () => computeSalesStatistics(filtered, filteredExpenses, profiles, items),
     [filtered, filteredExpenses, profiles, items]
   );
+
+  const filteredSoldTimings = useMemo(
+    () => soldTimings.filter((t) => matchesPeriod(t.soldDate, period)),
+    [soldTimings, period]
+  );
+  const daysToSellMedian = useMemo(
+    () => median(filteredSoldTimings.map((t) => t.daysToSell)),
+    [filteredSoldTimings]
+  );
+  const daysToSellBuckets = useMemo(
+    () => bucketByDays(filteredSoldTimings.map((t) => t.daysToSell)),
+    [filteredSoldTimings]
+  );
+
+  const filteredReturnCount = useMemo(
+    () => returnEvents.filter((r) => matchesPeriod(r.date, period)).length,
+    [returnEvents, period]
+  );
+  const returnRate = stats.count > 0 ? (filteredReturnCount / stats.count) * 100 : 0;
 
   return (
     <div className={pageWrapClass}>
@@ -397,6 +480,33 @@ export function StatisticsView({
             />
           </div>
         </div>
+
+        <p className={`text-xs ${mutedTextClass}`}>
+          Czas do sprzedaży i zwroty liczone tylko dla sprzedaży powiązanych z
+          konkretnym towarem w Magazynie — starsze/archiwalne wpisy takiego
+          powiązania nie mają, dane będą przybywać wraz z nowymi sprzedażami.
+        </p>
+
+        <div className="grid grid-cols-1 gap-[var(--space-md)] sm:grid-cols-2">
+          <Tile
+            label="Mediana czasu do sprzedaży"
+            value={daysToSellMedian != null ? `${daysToSellMedian} dni` : "—"}
+            valueClass={
+              daysToSellMedian == null || daysToSellMedian <= 60
+                ? "text-[var(--color-success)]"
+                : "text-[var(--color-warning)]"
+            }
+          />
+          <Tile
+            label="Zwroty"
+            value={`${filteredReturnCount} (${returnRate.toFixed(1)}%)`}
+            valueClass={
+              returnRate <= 5 ? "text-[var(--color-success)]" : "text-[var(--color-warning)]"
+            }
+          />
+        </div>
+
+        <DayBucketTable title="Czas do sprzedaży (rozkład)" rows={daysToSellBuckets} />
 
         <ProfitDistributionTable rows={stats.profitPerPair} />
 

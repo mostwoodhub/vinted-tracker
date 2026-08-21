@@ -7,6 +7,8 @@ import { computeLinkedSales } from "@/lib/batch-stats";
 import type { SaleRow } from "@/lib/sales-types";
 import { IntakeStatsSection, type IntakeItem } from "./IntakeStatsSection";
 import { warsawDateString } from "@/lib/warsaw-time";
+import { daysBetween } from "@/lib/day-buckets";
+import { computePipelineAging, type PipelineStageRow } from "@/lib/pipeline-aging";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
 const PROCESSING_STATUSES = [
@@ -31,6 +33,69 @@ function Tile({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function PipelineAgingTable({ rows }: { rows: PipelineStageRow[] }) {
+  return (
+    <div className="flex flex-col gap-[var(--gap-default)]">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-semibold text-[var(--color-text)]">
+          Gdzie utknął towar
+        </h2>
+        <p className={`text-xs ${mutedTextClass}`}>
+          Liczone od ostatniej zmiany statusu (albo przyjęcia, jeśli status
+          nigdy się nie zmienił). &bdquo;Powyżej progu&rdquo; = leży dłużej
+          niż zwykle zajmuje ten etap.
+        </p>
+      </div>
+      <div className={`overflow-x-auto ${cardClass} !p-0`}>
+        <table className="w-full min-w-[560px] text-left text-sm">
+          <thead className={`text-xs ${mutedTextClass}`}>
+            <tr>
+              <th className="px-4 py-3 font-medium">Etap</th>
+              <th className="px-4 py-3 font-medium">Liczba</th>
+              <th className="px-4 py-3 font-medium">Mediana dni</th>
+              <th className="px-4 py-3 font-medium">Próg</th>
+              <th className="px-4 py-3 font-medium">Powyżej progu</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                key={row.status}
+                className="[&:not(:last-child)]:border-b [&:not(:last-child)]:border-[var(--color-bg)]"
+              >
+                <td className="px-4 py-3 font-medium text-[var(--color-text)]">
+                  {row.label}
+                </td>
+                <td className="px-4 py-3 text-[var(--color-text)]">{row.count}</td>
+                <td className="px-4 py-3 text-[var(--color-text)]">
+                  {row.medianDays ?? "—"}
+                </td>
+                <td className={`px-4 py-3 ${mutedTextClass}`}>{row.threshold} dni</td>
+                <td
+                  className={`px-4 py-3 font-medium ${
+                    row.stuckCount > 0
+                      ? "text-[var(--color-danger)]"
+                      : "text-[var(--color-success)]"
+                  }`}
+                >
+                  {row.stuckCount}
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={5} className={`px-4 py-6 text-center text-sm ${mutedTextClass}`}>
+                  Brak towaru w trakcie obróbki.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default async function DashboardPage() {
   const employee = await getCurrentEmployee();
   const roles = getEffectiveRoles(employee);
@@ -40,8 +105,15 @@ export default async function DashboardPage() {
   }
 
   // Independent of each other — fire together instead of one after another.
-  const [{ data: items }, { data: batches }, { data: expenseRows }, sales, { data: employees }, { data: photoLog }] =
-    await Promise.all([
+  const [
+    { data: items },
+    { data: batches },
+    { data: expenseRows },
+    sales,
+    { data: employees },
+    { data: photoLog },
+    statusLog,
+  ] = await Promise.all([
       supabaseAdmin
         .from("items")
         .select("id, status, price, cost_price, batch_id, created_by, created_at")
@@ -85,6 +157,16 @@ export default async function DashboardPage() {
         .select("changed_by, changed_at")
         .eq("to_status", "photos_uploaded")
         .not("changed_by", "is", null),
+      // Every status transition is logged (see items/[id]/actions.ts,
+      // app/drafts/actions.ts, items/[id]/ai-card.ts, item-sale-link.ts) —
+      // an item's latest log row is exactly when it entered its current
+      // status, which is what "how long has this been stuck here" needs.
+      fetchAllRows<{ item_id: string; changed_at: string | null }>((from, to) =>
+        supabaseAdmin
+          .from("item_status_log")
+          .select("item_id, changed_at")
+          .range(from, to)
+      ),
     ]);
 
   const todayWarsaw = warsawDateString(new Date());
@@ -123,6 +205,23 @@ export default async function DashboardPage() {
     .map((log) => ({ employeeId: log.changed_by as string, createdAt: log.changed_at as string }));
 
   const rows = items ?? [];
+
+  const nowIso = new Date().toISOString();
+  const lastChangedAtByItem = new Map<string, string>();
+  for (const log of statusLog) {
+    if (!log.changed_at) continue;
+    const prev = lastChangedAtByItem.get(log.item_id);
+    if (!prev || log.changed_at > prev) lastChangedAtByItem.set(log.item_id, log.changed_at);
+  }
+
+  const pipelineRows = computePipelineAging(
+    rows
+      .filter((item) => item.status !== "sold")
+      .map((item) => {
+        const since = lastChangedAtByItem.get(item.id) ?? item.created_at ?? nowIso;
+        return { status: item.status, daysInStage: daysBetween(since, nowIso) };
+      })
+  );
 
   const inStock = rows.filter((item) => item.status !== "sold").length;
   const processing = rows.filter((item) =>
@@ -221,6 +320,8 @@ export default async function DashboardPage() {
           <Tile label="Opublikowano" value={published} />
           <Tile label="Sprzedano" value={sold} />
         </div>
+
+        <PipelineAgingTable rows={pipelineRows} />
 
         <IntakeStatsSection items={intakeItems} displayNames={displayNames} todayWarsaw={todayWarsaw} />
 
