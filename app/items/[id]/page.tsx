@@ -8,6 +8,7 @@ import { WorkingPhotosUpload } from "./WorkingPhotosUpload";
 import { PhotoSetsManager, type PhotoSetData, type PhotoSetPhoto } from "./PhotoSetsManager";
 import { EditItemForm } from "./EditItemForm";
 import { DeleteItemButton } from "./DeleteItemButton";
+import { BackButton } from "./BackButton";
 import { PhotoGrid } from "./PhotoGrid";
 import { RetryAiCardButton } from "./RetryAiCardButton";
 import { ApplyAiPriceButton } from "./ApplyAiPriceButton";
@@ -176,6 +177,7 @@ export default async function ItemPage({
   return (
     <div className={pageWrapClass}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-[var(--space-xl)] px-6 py-12">
+        <BackButton />
         <h1 className={headingClass}>
           Towar {formatItemNumber(item.batches?.label, item.internal_number, item.legacy_number)}
         </h1>
