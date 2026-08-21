@@ -34,6 +34,64 @@ export function buildBreakdown(sales: SaleRow[], keyFn: (sale: SaleRow) => strin
   return Array.from(map.values()).sort((a, b) => b.totalProfit - a.totalProfit);
 }
 
+export type ProfitPerPairBucket = {
+  label: string;
+  min: number;
+  max: number | null;
+  count: number;
+  totalProfit: number;
+};
+
+const PROFIT_BUCKET_DEFS: { label: string; min: number; max: number | null }[] = [
+  { label: "Strata (poniżej 0 zł)", min: -Infinity, max: 0 },
+  { label: "0–20 zł", min: 0, max: 20 },
+  { label: "20–50 zł", min: 20, max: 50 },
+  { label: "50–100 zł", min: 50, max: 100 },
+  { label: "100–200 zł", min: 100, max: 200 },
+  { label: "200 zł i więcej", min: 200, max: null },
+];
+
+// Average margin hides the spread — one 500 zł hit can mask five pairs that
+// sold at a loss. This buckets net_profit per individual pair instead of per
+// sale row. A multi-pair sale has no real per-pair fee/VAT/tax split stored
+// (those are only computed once for the whole sale), so its net_profit is
+// allocated across pairs proportionally to each pair's own price — a fair
+// approximation since fees/VAT scale with price anyway. A single aggregate
+// row covering `quantity` pairs (legacy bulk imports) splits evenly, same
+// assumption buildBreakdown already makes for its count.
+export function buildProfitPerPairDistribution(sales: SaleRow[]): ProfitPerPairBucket[] {
+  const buckets: ProfitPerPairBucket[] = PROFIT_BUCKET_DEFS.map((d) => ({ ...d, count: 0, totalProfit: 0 }));
+
+  function addToBucket(profit: number) {
+    const bucket =
+      buckets.find((b) => profit >= b.min && (b.max === null || profit < b.max)) ??
+      buckets[buckets.length - 1];
+    bucket.count += 1;
+    bucket.totalProfit += profit;
+  }
+
+  for (const sale of sales) {
+    const netProfit = sale.net_profit ?? 0;
+    const items = Array.isArray(sale.items) && sale.items.length > 1 ? sale.items : null;
+
+    if (items) {
+      const priceSum = items.reduce((sum, it) => sum + (it.price ?? 0), 0);
+      if (priceSum > 0) {
+        for (const it of items) addToBucket(netProfit * ((it.price ?? 0) / priceSum));
+      } else {
+        const even = netProfit / items.length;
+        for (let i = 0; i < items.length; i++) addToBucket(even);
+      }
+    } else {
+      const qty = sale.quantity ?? 1;
+      const even = netProfit / qty;
+      for (let i = 0; i < qty; i++) addToBucket(even);
+    }
+  }
+
+  return buckets;
+}
+
 export type DailyPoint = {
   date: string;
   revenue: number;
@@ -97,6 +155,7 @@ export type SalesStatistics = {
   byBrand: Breakdown[];
   bySize: Breakdown[];
   byBatch: Breakdown[];
+  profitPerPair: ProfitPerPairBucket[];
 };
 
 export function computeSalesStatistics(
@@ -166,6 +225,7 @@ export function computeSalesStatistics(
   });
   const bySize = buildItemLinkedBreakdown(sales, items, (item) => item.size ?? "—");
   const byBatch = buildItemLinkedBreakdown(sales, items, (item) => item.batchLabel ?? "—");
+  const profitPerPair = buildProfitPerPairDistribution(sales);
 
   return {
     count,
@@ -190,5 +250,6 @@ export function computeSalesStatistics(
     byBrand,
     bySize,
     byBatch,
+    profitPerPair,
   };
 }

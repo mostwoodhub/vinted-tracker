@@ -6,7 +6,12 @@ import { SalesActionBar } from "@/app/SalesActionBar";
 import { defaultPeriodFilter, matchesPeriod, type PeriodFilterState } from "@/lib/period-filter";
 import { formatPln } from "@/lib/format";
 import { INCOME_TAX_RATE } from "@/lib/sales-calc";
-import { computeSalesStatistics, type Breakdown, type MatchableItem } from "@/lib/sales-stats";
+import {
+  computeSalesStatistics,
+  type Breakdown,
+  type MatchableItem,
+  type ProfitPerPairBucket,
+} from "@/lib/sales-stats";
 import { EXPENSE_CATEGORY_ROWS } from "@/lib/expense-categories";
 import type { SaleRow } from "@/lib/sales-types";
 import type { BatchPayback } from "@/lib/batch-stats";
@@ -83,6 +88,78 @@ function BreakdownTable({ title, rows }: { title: string; rows: Breakdown[] }) {
               </tr>
             ))}
             {rows.length === 0 && (
+              <tr>
+                <td colSpan={4} className={`px-4 py-6 text-center text-sm ${mutedTextClass}`}>
+                  Brak danych.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// The average margin tile hides the spread — one very profitable pair can
+// mask several that sold at a loss. This shows how profit is actually
+// distributed across individual pairs instead of just the one number.
+function ProfitDistributionTable({ rows }: { rows: ProfitPerPairBucket[] }) {
+  const totalCount = rows.reduce((sum, r) => sum + r.count, 0);
+  const maxCount = Math.max(1, ...rows.map((r) => r.count));
+
+  return (
+    <div className="flex flex-col gap-[var(--gap-default)]">
+      <h2 className="text-lg font-semibold text-[var(--color-text)]">
+        Zysk na parę (rozkład)
+      </h2>
+      <div className={`overflow-x-auto ${cardClass} !p-0`}>
+        <table className="w-full min-w-[520px] text-left text-sm">
+          <thead className={`text-xs ${mutedTextClass}`}>
+            <tr>
+              <th className="px-4 py-3 font-medium">Przedział</th>
+              <th className="px-4 py-3 font-medium">Liczba par</th>
+              <th className="px-4 py-3 font-medium">Łączny zysk</th>
+              <th className="px-4 py-3 font-medium">Średni zysk / parę</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                key={row.label}
+                className="[&:not(:last-child)]:border-b [&:not(:last-child)]:border-[var(--color-bg)]"
+              >
+                <td className="px-4 py-3 font-medium text-[var(--color-text)]">
+                  {row.label}
+                </td>
+                <td className="px-4 py-3 text-[var(--color-text)]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 shrink-0 text-right">{row.count}</span>
+                    <div className="h-2 flex-1 rounded-full bg-[var(--color-bg)]">
+                      <div
+                        className={`h-2 rounded-full ${
+                          row.min < 0 ? "bg-[var(--color-danger)]" : "bg-[var(--color-accent)]"
+                        }`}
+                        style={{ width: `${(row.count / maxCount) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </td>
+                <td
+                  className={`px-4 py-3 font-medium ${
+                    row.totalProfit >= 0
+                      ? "text-[var(--color-success)]"
+                      : "text-[var(--color-danger)]"
+                  }`}
+                >
+                  {formatPln(row.totalProfit)}
+                </td>
+                <td className="px-4 py-3 text-[var(--color-text)]">
+                  {row.count > 0 ? formatPln(row.totalProfit / row.count) : "—"}
+                </td>
+              </tr>
+            ))}
+            {totalCount === 0 && (
               <tr>
                 <td colSpan={4} className={`px-4 py-6 text-center text-sm ${mutedTextClass}`}>
                   Brak danych.
@@ -320,6 +397,8 @@ export function StatisticsView({
             />
           </div>
         </div>
+
+        <ProfitDistributionTable rows={stats.profitPerPair} />
 
         <BatchPaybackTable rows={batchPayback} />
 
