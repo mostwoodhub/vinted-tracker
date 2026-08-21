@@ -202,6 +202,18 @@ export default async function ItemPage({
           </div>
         )}
 
+        {workingPhotos.length === 0 && (
+          <div className={noticeWarningClass}>
+            <p className="font-medium">
+              ⚠️ Brak zdjęcia roboczego —{" "}
+              <a href="#working-photos" className="underline">
+                dodaj zdjęcie
+              </a>
+              , żeby AI mogło zaproponować model i wstępną cenę.
+            </p>
+          </div>
+        )}
+
         {showRetryAiCard && <RetryAiCardButton itemId={item.id} />}
 
         {item.status === "published" && <ReturnItemForm itemId={item.id} />}
@@ -260,7 +272,7 @@ export default async function ItemPage({
         </dl>
 
         <div className="grid grid-cols-1 gap-[var(--space-xl)] sm:grid-cols-2">
-          <div className="flex flex-col gap-3">
+          <div id="working-photos" className="flex flex-col gap-3">
             <h2 className="text-sm font-medium text-[var(--color-text)]">
               Zdjęcia robocze (z przyjęcia)
             </h2>
