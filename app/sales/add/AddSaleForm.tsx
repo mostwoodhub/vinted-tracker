@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { createSale, checkSoldNumber, type AddSaleState, type SoldNumberCheckResult } from "./actions";
+import {
+  createSale,
+  checkSoldNumber,
+  checkItemsByLegacyNumber,
+  type AddSaleState,
+  type SoldNumberCheckResult,
+  type ItemsByLegacyNumberResult,
+} from "./actions";
 import { updateSale } from "@/app/sales/actions";
 import {
   calcIncomeTaxAmount,
@@ -60,36 +67,125 @@ const ITEM_STATUS_LABELS: Record<string, string> = {
 function ItemMatchHint({
   shoeId,
   itemStatusByNumber,
+  onResolvedItemChange,
 }: {
   shoeId: string;
   itemStatusByNumber: Record<string, string>;
+  onResolvedItemChange?: (itemId: string | null) => void;
 }) {
   const trimmed = shoeId.trim();
   const [soldCheck, setSoldCheck] = useState<SoldNumberCheckResult | null>(null);
-  const [zoomed, setZoomed] = useState(false);
+  const [itemsCheck, setItemsCheck] = useState<ItemsByLegacyNumberResult | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [zoomedUrl, setZoomedUrl] = useState<string | null>(null);
   const latestRef = useRef(trimmed);
   useEffect(() => {
     latestRef.current = trimmed;
   });
+  // Avoids re-running the lookup effect just because the parent passed a
+  // fresh onResolvedItemChange closure — only `trimmed` should retrigger it.
+  const onResolvedItemChangeRef = useRef(onResolvedItemChange);
+  useEffect(() => {
+    onResolvedItemChangeRef.current = onResolvedItemChange;
+  });
 
   useEffect(() => {
-    // Resetting zoom/lookup state as the field changes, not mirroring a
-    // prop into state — legitimate direct setState here.
+    // Resetting zoom/selection/lookup state as the field changes, not
+    // mirroring a prop into state — legitimate direct setState here.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setZoomed(false);
+    setZoomedUrl(null);
+    setSelectedItemId(null);
+    onResolvedItemChangeRef.current?.(null);
     if (!trimmed) {
       setSoldCheck(null);
+      setItemsCheck(null);
       return;
     }
     const timer = setTimeout(() => {
-      checkSoldNumber(trimmed).then((result) => {
-        if (latestRef.current === trimmed) setSoldCheck(result);
-      });
+      Promise.all([checkSoldNumber(trimmed), checkItemsByLegacyNumber(trimmed)]).then(
+        ([sold, items]) => {
+          if (latestRef.current === trimmed) {
+            setSoldCheck(sold);
+            setItemsCheck(items);
+          }
+        }
+      );
     }, 400);
     return () => clearTimeout(timer);
   }, [trimmed]);
 
   if (!trimmed) return null;
+
+  function selectCandidate(itemId: string) {
+    setSelectedItemId(itemId);
+    onResolvedItemChange?.(itemId);
+  }
+
+  if (itemsCheck?.ambiguous) {
+    return (
+      <>
+        <div className={`${noticeWarningClass} flex-col gap-2`}>
+          <p>
+            ⚠️ Ten numer ma {itemsCheck.candidates.length} towary w Magazynie — wybierz,
+            który sprzedano:
+          </p>
+          {itemsCheck.candidates.map((c) => (
+            <div
+              key={c.itemId}
+              className={`flex flex-row items-center gap-3 rounded-[var(--radius-sm)] p-2 ${
+                selectedItemId === c.itemId ? "ring-2 ring-[var(--color-accent)]" : ""
+              }`}
+            >
+              {c.thumbUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={c.thumbUrl}
+                  alt=""
+                  onClick={() => setZoomedUrl(c.photoUrl)}
+                  className="h-12 w-12 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover"
+                />
+              ) : (
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-xl">
+                  📦
+                </div>
+              )}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <p className="truncate">{c.displayNumber}</p>
+                <p className={`truncate text-xs ${mutedTextClass}`}>
+                  {c.brand ?? "—"} {c.model ?? ""} · {ITEM_STATUS_LABELS[c.status] ?? c.status}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => selectCandidate(c.itemId)}
+                className={`shrink-0 whitespace-nowrap rounded-[var(--radius-sm)] px-2 py-1 text-xs font-medium ${
+                  selectedItemId === c.itemId
+                    ? "bg-[var(--color-accent)] text-white"
+                    : "underline hover:text-[var(--color-text)]"
+                }`}
+              >
+                {selectedItemId === c.itemId ? "Wybrano ✓" : "Wybierz"}
+              </button>
+            </div>
+          ))}
+        </div>
+        {zoomedUrl && (
+          <div
+            onClick={() => setZoomedUrl(null)}
+            className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={zoomedUrl}
+              alt=""
+              onClick={() => setZoomedUrl(null)}
+              className="max-h-full max-w-full rounded-[var(--radius-md)] object-contain"
+            />
+          </div>
+        )}
+      </>
+    );
+  }
 
   if (soldCheck?.sold) {
     return (
@@ -100,7 +196,7 @@ function ItemMatchHint({
             <img
               src={soldCheck.photoUrl}
               alt=""
-              onClick={() => setZoomed(true)}
+              onClick={() => setZoomedUrl(soldCheck.photoUrl)}
               className="h-12 w-12 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover"
             />
           ) : (
@@ -127,16 +223,16 @@ function ItemMatchHint({
             Zobacz →
           </Link>
         </div>
-        {zoomed && soldCheck.photoUrl && (
+        {zoomedUrl && (
           <div
-            onClick={() => setZoomed(false)}
+            onClick={() => setZoomedUrl(null)}
             className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={soldCheck.photoUrl}
+              src={zoomedUrl}
               alt=""
-              onClick={() => setZoomed(false)}
+              onClick={() => setZoomedUrl(null)}
               className="max-h-full max-w-full rounded-[var(--radius-md)] object-contain"
             />
           </div>
@@ -169,7 +265,7 @@ function ItemMatchHint({
   );
 }
 
-type Pair = { shoeId: string; price: string; cost: string };
+type Pair = { shoeId: string; price: string; cost: string; resolvedItemId: string | null };
 type LabelSlot =
   | { kind: "empty" }
   | { kind: "existing"; url: string; filename: string | null }
@@ -181,7 +277,7 @@ type ReceiptSlot =
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const initialState: AddSaleState = { status: "idle" };
-const emptyPair = (): Pair => ({ shoeId: "", price: "", cost: "" });
+const emptyPair = (): Pair => ({ shoeId: "", price: "", cost: "", resolvedItemId: null });
 const toNumber = (v: string) => Number(v.replace(",", ".")) || 0;
 const numToInput = (v: number | null | undefined) => (v == null ? "" : String(v));
 
@@ -217,11 +313,15 @@ export function AddSaleForm({
           shoeId: it.shoeId ?? "",
           price: numToInput(it.price),
           cost: numToInput(it.cost),
+          resolvedItemId: it.itemId ?? null,
         }))
       : [emptyPair()]
   );
   const [singleShoeId, setSingleShoeId] = useState(
     !isInitialMultiPair ? initialSale?.legacy_shoe_id ?? "" : ""
+  );
+  const [singleResolvedItemId, setSingleResolvedItemId] = useState<string | null>(
+    !isInitialMultiPair ? initialItems?.[0]?.itemId ?? null : null
   );
   const [singlePrice, setSinglePrice] = useState(
     !isInitialMultiPair ? numToInput(initialSale?.sale_price) : ""
@@ -325,9 +425,15 @@ export function AddSaleForm({
     });
   }
 
-  function updatePair(index: number, field: keyof Pair, value: string) {
+  function updatePair(index: number, field: "shoeId" | "price" | "cost", value: string) {
     setPairs((prev) =>
       prev.map((pair, i) => (i === index ? { ...pair, [field]: value } : pair))
+    );
+  }
+
+  function updatePairResolvedItem(index: number, itemId: string | null) {
+    setPairs((prev) =>
+      prev.map((pair, i) => (i === index ? { ...pair, resolvedItemId: itemId } : pair))
     );
   }
 
@@ -461,6 +567,7 @@ export function AddSaleForm({
           shoeId: p.shoeId,
           price: toNumber(p.price),
           cost: toNumber(p.cost),
+          itemId: p.resolvedItemId,
         }))
       ),
     [pairs]
@@ -539,7 +646,12 @@ export function AddSaleForm({
               onChange={(e) => handleSingleShoeIdChange(e.target.value)}
               className={inputClass}
             />
-            <ItemMatchHint shoeId={singleShoeId} itemStatusByNumber={itemStatusByNumber} />
+            <ItemMatchHint
+              shoeId={singleShoeId}
+              itemStatusByNumber={itemStatusByNumber}
+              onResolvedItemChange={setSingleResolvedItemId}
+            />
+            <input type="hidden" name="resolvedItemId" value={singleResolvedItemId ?? ""} />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className={labelClass}>Marka</span>
@@ -613,7 +725,11 @@ export function AddSaleForm({
                     onChange={(e) => updatePair(index, "shoeId", e.target.value)}
                     className={inputClass}
                   />
-                  <ItemMatchHint shoeId={pair.shoeId} itemStatusByNumber={itemStatusByNumber} />
+                  <ItemMatchHint
+                    shoeId={pair.shoeId}
+                    itemStatusByNumber={itemStatusByNumber}
+                    onResolvedItemChange={(itemId) => updatePairResolvedItem(index, itemId)}
+                  />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className={labelClass}>Cena</span>

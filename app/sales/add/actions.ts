@@ -10,6 +10,7 @@ import { uploadSaleFile, uploadSalePhotos } from "@/lib/sales-upload";
 import { markItemSoldByShoeId } from "@/lib/item-sale-link";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { formatPln } from "@/lib/format";
+import { formatItemNumber } from "@/lib/item-number";
 
 export type AddSaleState = {
   status: "idle" | "error";
@@ -66,6 +67,87 @@ export async function checkSoldNumber(shoeId: string): Promise<SoldNumberCheckRe
     accountName: data.account_name,
     photoUrl,
   };
+}
+
+export type ItemsByLegacyNumberResult =
+  | { ambiguous: false }
+  | {
+      ambiguous: true;
+      candidates: {
+        itemId: string;
+        displayNumber: string;
+        brand: string | null;
+        model: string | null;
+        status: string;
+        thumbUrl: string | null;
+        photoUrl: string | null;
+      }[];
+    };
+
+// A legacy number written on a physical shoe isn't guaranteed unique — the
+// same old number sometimes ends up on two genuinely different items
+// (duplicate manual entry, or a number reused over time). When that
+// happens, markItemSoldByShoeId can't tell which one just sold and silently
+// skips both — "Sprzedano X z N" never updates and nobody notices. This
+// lets the employee resolve it by eye instead: called only when the fast
+// preloaded itemStatusByNumber map might be hiding a collision.
+export async function checkItemsByLegacyNumber(legacyNumber: string): Promise<ItemsByLegacyNumberResult> {
+  const access = await checkRole(...ALL_ROLES);
+  if (!access.ok) return { ambiguous: false };
+
+  const trimmed = legacyNumber.trim();
+  if (!trimmed) return { ambiguous: false };
+
+  const { data } = await supabaseAdmin
+    .from("items")
+    .select("id, internal_number, brand, model, status, batches(label)")
+    .eq("legacy_number", trimmed)
+    .is("deleted_at", null);
+
+  const rows = data ?? [];
+  if (rows.length <= 1) return { ambiguous: false };
+
+  const candidates = await Promise.all(
+    rows.map(async (row) => {
+      const batches = row.batches as { label: string | null } | { label: string | null }[] | null;
+      const batchLabel = Array.isArray(batches) ? (batches[0]?.label ?? null) : (batches?.label ?? null);
+
+      const { data: photoRow } = await supabaseAdmin
+        .from("item_photos")
+        .select("storage_path")
+        .eq("item_id", row.id)
+        .eq("is_working_photo", true)
+        .limit(1)
+        .maybeSingle();
+
+      let thumbUrl: string | null = null;
+      let photoUrl: string | null = null;
+      if (photoRow) {
+        const [{ data: signedThumb }, { data: signedFull }] = await Promise.all([
+          supabaseAdmin.storage
+            .from("item-photos")
+            .createSignedUrl(photoRow.storage_path, 300, {
+              transform: { width: 128, height: 128, resize: "cover" },
+            }),
+          supabaseAdmin.storage.from("item-photos").createSignedUrl(photoRow.storage_path, 300),
+        ]);
+        thumbUrl = signedThumb?.signedUrl ?? null;
+        photoUrl = signedFull?.signedUrl ?? null;
+      }
+
+      return {
+        itemId: row.id,
+        displayNumber: formatItemNumber(batchLabel, row.internal_number, trimmed),
+        brand: row.brand,
+        model: row.model,
+        status: row.status,
+        thumbUrl,
+        photoUrl,
+      };
+    })
+  );
+
+  return { ambiguous: true, candidates };
 }
 
 export async function createSale(
@@ -155,9 +237,11 @@ export async function createSale(
   // X z N" counts pick this up. Never blocks the sale itself — see
   // markItemSoldByShoeId for why this can legitimately be a no-op.
   if (parsed.items && parsed.items.length > 0) {
-    await Promise.all(parsed.items.map((item) => markItemSoldByShoeId(item.shoeId)));
+    await Promise.all(
+      parsed.items.map((item) => markItemSoldByShoeId(item.shoeId, item.itemId))
+    );
   } else {
-    await markItemSoldByShoeId(parsed.legacyShoeId);
+    await markItemSoldByShoeId(parsed.legacyShoeId, parsed.resolvedItemId);
   }
 
   after(async () => {

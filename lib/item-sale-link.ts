@@ -16,7 +16,43 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 // duplicate numbers, or shoe numbers with no matching item are silent
 // no-ops. Recording the sale itself must never be blocked or fail because
 // of this.
-export async function markItemSoldByShoeId(shoeId: string | null | undefined): Promise<void> {
+// Marks one specific item sold, bypassing legacy_number lookup entirely —
+// used when the employee explicitly picked which physical pair sold from
+// the ambiguous-number picker (see checkItemsByLegacyNumber), so there's
+// nothing left to guess.
+async function markItemSoldById(itemId: string): Promise<void> {
+  try {
+    const { data: item } = await supabaseAdmin
+      .from("items")
+      .select("id, status")
+      .eq("id", itemId)
+      .maybeSingle();
+    if (!item || item.status === "sold") return;
+
+    const { error: updateError } = await supabaseAdmin
+      .from("items")
+      .update({ status: "sold" })
+      .eq("id", item.id);
+    if (updateError) return;
+
+    await supabaseAdmin.from("item_status_log").insert({
+      item_id: item.id,
+      from_status: item.status,
+      to_status: "sold",
+    });
+  } catch (err) {
+    console.error(`[item-sale-link] Nie udalo sie oznaczyc towaru jako sprzedany (id=${itemId}):`, err);
+  }
+}
+
+export async function markItemSoldByShoeId(
+  shoeId: string | null | undefined,
+  resolvedItemId?: string | null
+): Promise<void> {
+  if (resolvedItemId) {
+    await markItemSoldById(resolvedItemId);
+    return;
+  }
   if (!shoeId) return;
   // Most callers already pass one id at a time, but a few paths still hand
   // this a raw comma-joined multi-pair string — split defensively either way.

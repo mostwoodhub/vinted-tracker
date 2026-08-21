@@ -2,6 +2,10 @@ export type SaleItem = {
   shoeId: string;
   price: number;
   cost: number;
+  // Set only when the shoe number matched more than one item and the
+  // employee picked which physical pair sold — see checkItemsByLegacyNumber
+  // in app/sales/add/actions.ts. Absent for the common unambiguous case.
+  itemId?: string | null;
 };
 
 export type SaleRow = {

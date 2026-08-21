@@ -27,7 +27,8 @@ export type ParsedSaleFields = {
   vatAmount: number;
   incomeTaxAmount: number;
   netProfit: number;
-  items: { shoeId: string; price: number; cost: number }[] | null;
+  items: { shoeId: string; price: number; cost: number; itemId: string | null }[] | null;
+  resolvedItemId: string | null;
 };
 
 export function parseSaleFormFields(formData: FormData): ParsedSaleFields | { error: string } {
@@ -46,7 +47,7 @@ export function parseSaleFormFields(formData: FormData): ParsedSaleFields | { er
   const vatMode = String(formData.get("vatMode") ?? "full").trim();
   const incomeTaxApplied = formData.get("incomeTaxApplied") === "on";
 
-  let items: { shoeId: string; price: number; cost: number }[] | null = null;
+  let items: { shoeId: string; price: number; cost: number; itemId: string | null }[] | null = null;
   const itemsRaw = String(formData.get("items") ?? "").trim();
   if (itemsRaw) {
     try {
@@ -56,12 +57,15 @@ export function parseSaleFormFields(formData: FormData): ParsedSaleFields | { er
           shoeId: String(entry.shoeId ?? ""),
           price: Number(entry.price) || 0,
           cost: Number(entry.cost) || 0,
+          itemId: entry.itemId ? String(entry.itemId) : null,
         }));
       }
     } catch {
       // malformed items payload — fall back to the plain aggregate fields
     }
   }
+
+  const resolvedItemId = String(formData.get("resolvedItemId") ?? "").trim() || null;
 
   if (!platform) return { error: "Wybierz platformę" };
   if (!saleDate) return { error: "Podaj datę" };
@@ -92,5 +96,6 @@ export function parseSaleFormFields(formData: FormData): ParsedSaleFields | { er
     incomeTaxAmount,
     netProfit,
     items,
+    resolvedItemId,
   };
 }
