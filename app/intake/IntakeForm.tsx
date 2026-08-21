@@ -189,17 +189,19 @@ export function IntakeForm({
   // safety net.
   const [dupCheck, setDupCheck] = useState<LegacyNumberCheckResult | null>(null);
   const [checkingDup, setCheckingDup] = useState(false);
+  const [dupZoomed, setDupZoomed] = useState(false);
   const legacyNumberLatestRef = useRef(legacyNumber);
   useEffect(() => {
     legacyNumberLatestRef.current = legacyNumber;
   });
 
   useEffect(() => {
+    // Resetting zoom/lookup state as the field changes, not mirroring a
+    // prop into state — legitimate direct setState here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDupZoomed(false);
     const trimmed = legacyNumber.trim();
-    // Clearing derived lookup state when the field empties out, not
-    // mirroring a prop into state — legitimate direct setState here.
     if (!trimmed) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDupCheck(null);
       setCheckingDup(false);
       return;
@@ -369,36 +371,53 @@ export function IntakeForm({
             <p className={`text-xs ${mutedTextClass}`}>Sprawdzanie…</p>
           )}
           {!checkingDup && dupCheck?.exists && (
-            <div className={`${noticeWarningClass} flex-row items-center gap-3`}>
-              {dupCheck.thumbUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={dupCheck.thumbUrl}
-                  alt=""
-                  className="h-12 w-12 shrink-0 rounded-[var(--radius-sm)] object-cover"
-                />
-              ) : (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-xl">
-                  📦
+            <>
+              <div className={`${noticeWarningClass} flex-row items-center gap-3`}>
+                {dupCheck.thumbUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={dupCheck.thumbUrl}
+                    alt=""
+                    onClick={() => setDupZoomed(true)}
+                    className="h-12 w-12 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-xl">
+                    📦
+                  </div>
+                )}
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <p className="truncate">
+                    ⚠️ Ten numer już jest: <strong>{dupCheck.displayNumber}</strong>
+                  </p>
+                  <p className={`truncate text-xs ${mutedTextClass}`}>
+                    {dupCheck.brand ?? "—"} {dupCheck.model ?? ""} ·{" "}
+                    {ITEM_STATUS_LABELS[dupCheck.status] ?? dupCheck.status}
+                  </p>
+                </div>
+                <Link
+                  href={`/items/${dupCheck.itemId}`}
+                  target="_blank"
+                  className="shrink-0 whitespace-nowrap text-xs font-medium underline hover:text-[var(--color-text)]"
+                >
+                  Zobacz →
+                </Link>
+              </div>
+              {dupZoomed && dupCheck.photoUrl && (
+                <div
+                  onClick={() => setDupZoomed(false)}
+                  className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={dupCheck.photoUrl}
+                    alt=""
+                    onClick={() => setDupZoomed(false)}
+                    className="max-h-full max-w-full rounded-[var(--radius-md)] object-contain"
+                  />
                 </div>
               )}
-              <div className="flex min-w-0 flex-1 flex-col">
-                <p className="truncate">
-                  ⚠️ Ten numer już jest: <strong>{dupCheck.displayNumber}</strong>
-                </p>
-                <p className={`truncate text-xs ${mutedTextClass}`}>
-                  {dupCheck.brand ?? "—"} {dupCheck.model ?? ""} ·{" "}
-                  {ITEM_STATUS_LABELS[dupCheck.status] ?? dupCheck.status}
-                </p>
-              </div>
-              <Link
-                href={`/items/${dupCheck.itemId}`}
-                target="_blank"
-                className="shrink-0 whitespace-nowrap text-xs font-medium underline hover:text-[var(--color-text)]"
-              >
-                Zobacz →
-              </Link>
-            </div>
+            </>
           )}
           {!checkingDup && dupCheck?.exists === false && legacyNumber.trim() && (
             <p className="text-xs text-[var(--color-success)]">✓ Numer wolny</p>

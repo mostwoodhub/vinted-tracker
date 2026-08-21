@@ -16,6 +16,58 @@ export type AddSaleState = {
   error?: string;
 };
 
+export type SoldNumberCheckResult =
+  | { sold: false }
+  | {
+      sold: true;
+      saleId: string;
+      shoeId: string;
+      saleDate: string | null;
+      buyerName: string | null;
+      salePrice: number | null;
+      platform: string | null;
+      accountName: string | null;
+      photoUrl: string | null;
+    };
+
+// Live, as-you-type lookup — itemStatusByNumber (preloaded, instant) only
+// covers numbers that exist as a row in `items`, so a legacy number with a
+// recorded sale but no warehouse item (common for pre-migration stock) fell
+// through to a generic "not in Magazynie" hint with no hint that it was
+// already sold. This checks `sales` directly, with a photo, so that gap
+// doesn't silently exist.
+export async function checkSoldNumber(shoeId: string): Promise<SoldNumberCheckResult> {
+  const access = await checkRole(...ALL_ROLES);
+  if (!access.ok) return { sold: false };
+
+  const trimmed = shoeId.trim();
+  if (!trimmed) return { sold: false };
+
+  const { data } = await supabaseAdmin
+    .from("sales")
+    .select("id, sale_date, buyer_name, sale_price, platform, account_name, photo_url, photo_urls")
+    .eq("legacy_shoe_id", trimmed)
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return { sold: false };
+
+  const photoUrl = data.photo_url ?? data.photo_urls?.[0] ?? null;
+
+  return {
+    sold: true,
+    saleId: data.id,
+    shoeId: trimmed,
+    saleDate: data.sale_date,
+    buyerName: data.buyer_name,
+    salePrice: data.sale_price,
+    platform: data.platform,
+    accountName: data.account_name,
+    photoUrl,
+  };
+}
+
 export async function createSale(
   _prevState: AddSaleState,
   formData: FormData

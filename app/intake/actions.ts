@@ -30,6 +30,7 @@ export type LegacyNumberCheckResult =
       model: string | null;
       status: string;
       thumbUrl: string | null;
+      photoUrl: string | null;
     };
 
 // Live, as-you-type lookup — lets the employee see *what* is already under
@@ -67,13 +68,18 @@ export async function checkLegacyNumber(legacyNumber: string): Promise<LegacyNum
     .maybeSingle();
 
   let thumbUrl: string | null = null;
+  let photoUrl: string | null = null;
   if (photoRow) {
-    const { data: signed } = await supabaseAdmin.storage
-      .from("item-photos")
-      .createSignedUrl(photoRow.storage_path, 300, {
-        transform: { width: 128, height: 128, resize: "cover" },
-      });
-    thumbUrl = signed?.signedUrl ?? null;
+    const [{ data: signedThumb }, { data: signedFull }] = await Promise.all([
+      supabaseAdmin.storage
+        .from("item-photos")
+        .createSignedUrl(photoRow.storage_path, 300, {
+          transform: { width: 128, height: 128, resize: "cover" },
+        }),
+      supabaseAdmin.storage.from("item-photos").createSignedUrl(photoRow.storage_path, 300),
+    ]);
+    thumbUrl = signedThumb?.signedUrl ?? null;
+    photoUrl = signedFull?.signedUrl ?? null;
   }
 
   return {
@@ -84,6 +90,7 @@ export async function checkLegacyNumber(legacyNumber: string): Promise<LegacyNum
     model: data.model,
     status: data.status,
     thumbUrl,
+    photoUrl,
   };
 }
 

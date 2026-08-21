@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { createSale, type AddSaleState } from "./actions";
+import { createSale, checkSoldNumber, type AddSaleState, type SoldNumberCheckResult } from "./actions";
 import { updateSale } from "@/app/sales/actions";
 import {
   calcIncomeTaxAmount,
@@ -22,6 +23,7 @@ import {
   inputClass,
   labelClass,
   mutedTextClass,
+  noticeWarningClass,
   pillClass,
 } from "@/lib/ui-classes";
 
@@ -48,6 +50,13 @@ const ITEM_STATUS_LABELS: Record<string, string> = {
 // sold alongside stock), this just makes a mismatch visible instead of a
 // silent no-op: see lib/item-sale-link.ts for why that matters for batch
 // "Sprzedano X z N" counts.
+//
+// itemStatusByNumber (preloaded, instant) only knows about numbers that
+// exist as a row in `items` — a legacy number with a recorded sale but no
+// warehouse item (common for pre-migration stock) fell through to a
+// generic "not in Magazynie" hint, with no sign it was already sold. The
+// debounced checkSoldNumber lookup below covers that gap directly against
+// `sales`, with a photo, and takes priority when it finds a match.
 function ItemMatchHint({
   shoeId,
   itemStatusByNumber,
@@ -56,7 +65,86 @@ function ItemMatchHint({
   itemStatusByNumber: Record<string, string>;
 }) {
   const trimmed = shoeId.trim();
+  const [soldCheck, setSoldCheck] = useState<SoldNumberCheckResult | null>(null);
+  const [zoomed, setZoomed] = useState(false);
+  const latestRef = useRef(trimmed);
+  useEffect(() => {
+    latestRef.current = trimmed;
+  });
+
+  useEffect(() => {
+    // Resetting zoom/lookup state as the field changes, not mirroring a
+    // prop into state — legitimate direct setState here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setZoomed(false);
+    if (!trimmed) {
+      setSoldCheck(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      checkSoldNumber(trimmed).then((result) => {
+        if (latestRef.current === trimmed) setSoldCheck(result);
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [trimmed]);
+
   if (!trimmed) return null;
+
+  if (soldCheck?.sold) {
+    return (
+      <>
+        <div className={`${noticeWarningClass} flex-row items-center gap-3`}>
+          {soldCheck.photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={soldCheck.photoUrl}
+              alt=""
+              onClick={() => setZoomed(true)}
+              className="h-12 w-12 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover"
+            />
+          ) : (
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-xl">
+              📦
+            </div>
+          )}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <p className="truncate">
+              ⚠️ Ten numer już sprzedany: <strong>{soldCheck.shoeId}</strong>
+            </p>
+            <p className={`truncate text-xs ${mutedTextClass}`}>
+              {soldCheck.saleDate ?? "—"}
+              {soldCheck.buyerName ? ` · ${soldCheck.buyerName}` : ""}
+              {soldCheck.salePrice != null ? ` · ${formatPln(soldCheck.salePrice)}` : ""}
+              {soldCheck.accountName ? ` · ${soldCheck.accountName}` : ""}
+            </p>
+          </div>
+          <Link
+            href={`/sales/${soldCheck.saleId}/edit`}
+            target="_blank"
+            className="shrink-0 whitespace-nowrap text-xs font-medium underline hover:text-[var(--color-text)]"
+          >
+            Zobacz →
+          </Link>
+        </div>
+        {zoomed && soldCheck.photoUrl && (
+          <div
+            onClick={() => setZoomed(false)}
+            className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={soldCheck.photoUrl}
+              alt=""
+              onClick={() => setZoomed(false)}
+              className="max-h-full max-w-full rounded-[var(--radius-md)] object-contain"
+            />
+          </div>
+        )}
+      </>
+    );
+  }
+
   const status = itemStatusByNumber[trimmed];
 
   if (status === undefined) {
