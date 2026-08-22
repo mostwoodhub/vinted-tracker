@@ -39,7 +39,7 @@ export async function generateAiCard(itemId: string) {
     .select("storage_path")
     .eq("item_id", itemId)
     .eq("is_working_photo", false)
-    .order("uploaded_at", { ascending: true })
+    .order("sort_order", { ascending: true })
     .limit(8);
 
   if (!photos || photos.length === 0) return;

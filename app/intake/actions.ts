@@ -218,7 +218,7 @@ export async function createItem(
       changed_by: access.employee.id,
     });
 
-    for (const photo of photos) {
+    for (const [index, photo] of photos.entries()) {
       const extension = photo.name.includes(".")
         ? photo.name.slice(photo.name.lastIndexOf("."))
         : "";
@@ -236,7 +236,7 @@ export async function createItem(
 
       const { error: photoRowError } = await supabaseAdmin
         .from("item_photos")
-        .insert({ item_id: item.id, storage_path: path, is_working_photo: true });
+        .insert({ item_id: item.id, storage_path: path, is_working_photo: true, sort_order: index });
 
       if (photoRowError) {
         return { status: "error", error: photoRowError.message };

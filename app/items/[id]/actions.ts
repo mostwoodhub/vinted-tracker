@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
 import { resolveBatchId, deriveBatchLabelFromLegacyNumber } from "@/lib/batches";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
+import { getNextPhotoSortOrder } from "@/lib/item-photos";
 import { generateAiCard } from "./ai-card";
 
 export type FinalPhotosState = {
@@ -31,6 +32,7 @@ export async function uploadFinalPhotos(
     return { status: "error", error: "Wybierz co najmniej jedno zdjęcie" };
   }
 
+  let nextSortOrder = await getNextPhotoSortOrder(itemId, false);
   for (const photo of photos) {
     const extension = photo.name.includes(".")
       ? photo.name.slice(photo.name.lastIndexOf("."))
@@ -45,7 +47,7 @@ export async function uploadFinalPhotos(
 
     const { error: photoRowError } = await supabaseAdmin
       .from("item_photos")
-      .insert({ item_id: itemId, storage_path: path, is_working_photo: false });
+      .insert({ item_id: itemId, storage_path: path, is_working_photo: false, sort_order: nextSortOrder++ });
 
     if (photoRowError) return { status: "error", error: photoRowError.message };
   }
@@ -109,6 +111,7 @@ export async function uploadWorkingPhotos(
     return { status: "error", error: "Wybierz co najmniej jedno zdjęcie" };
   }
 
+  let nextSortOrder = await getNextPhotoSortOrder(itemId, true);
   for (const photo of photos) {
     const extension = photo.name.includes(".")
       ? photo.name.slice(photo.name.lastIndexOf("."))
@@ -123,10 +126,55 @@ export async function uploadWorkingPhotos(
 
     const { error: photoRowError } = await supabaseAdmin
       .from("item_photos")
-      .insert({ item_id: itemId, storage_path: path, is_working_photo: true });
+      .insert({ item_id: itemId, storage_path: path, is_working_photo: true, sort_order: nextSortOrder++ });
 
     if (photoRowError) return { status: "error", error: photoRowError.message };
   }
+
+  revalidatePath(`/items/${itemId}`);
+
+  return { status: "success" };
+}
+
+// Manual reordering — matters most for final photos, since OLX/AI card
+// generation only take the first N (see publishOlxAdvert, generateAiCard):
+// which photo lands first is a real choice, not just upload order. Swaps
+// sort_order with the immediate neighbor in the same group (working/final)
+// rather than renumbering the whole list, so this stays a small, cheap
+// two-row update no matter how many photos the item has.
+export async function moveItemPhoto(
+  itemId: string,
+  photoId: string,
+  direction: "earlier" | "later"
+): Promise<{ status: "idle" | "success" | "error"; error?: string }> {
+  const access = await checkRole("photographer", "intake", "admin");
+  if (!access.ok) return { status: "error", error: access.error };
+
+  const { data: current } = await supabaseAdmin
+    .from("item_photos")
+    .select("id, sort_order, is_working_photo")
+    .eq("id", photoId)
+    .single();
+  if (!current) return { status: "error", error: "Nie znaleziono zdjęcia" };
+
+  let neighborQuery = supabaseAdmin
+    .from("item_photos")
+    .select("id, sort_order")
+    .eq("item_id", itemId)
+    .eq("is_working_photo", current.is_working_photo);
+  neighborQuery =
+    direction === "earlier"
+      ? neighborQuery.lt("sort_order", current.sort_order).order("sort_order", { ascending: false })
+      : neighborQuery.gt("sort_order", current.sort_order).order("sort_order", { ascending: true });
+  const { data: neighbor } = await neighborQuery.limit(1).maybeSingle();
+  if (!neighbor) return { status: "success" };
+
+  const [{ error: error1 }, { error: error2 }] = await Promise.all([
+    supabaseAdmin.from("item_photos").update({ sort_order: neighbor.sort_order }).eq("id", current.id),
+    supabaseAdmin.from("item_photos").update({ sort_order: current.sort_order }).eq("id", neighbor.id),
+  ]);
+  if (error1) return { status: "error", error: error1.message };
+  if (error2) return { status: "error", error: error2.message };
 
   revalidatePath(`/items/${itemId}`);
 

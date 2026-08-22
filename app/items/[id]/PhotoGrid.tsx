@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { DownloadPhotoButton } from "@/app/DownloadPhotoButton";
+import { moveItemPhoto } from "./actions";
 import { mutedTextClass } from "@/lib/ui-classes";
 
 type ItemPhoto = {
@@ -9,14 +11,71 @@ type ItemPhoto = {
   storage_path: string;
 };
 
+// Arrow buttons over drag-and-drop on purpose — HTML5 native drag doesn't
+// work on touch devices at all, and this app's photo work happens mostly on
+// employees' phones (see the rest of this codebase's mobile-first history).
+// A tap works identically everywhere.
+function ReorderControls({
+  itemId,
+  photoId,
+  canMoveEarlier,
+  canMoveLater,
+}: {
+  itemId: string;
+  photoId: string;
+  canMoveEarlier: boolean;
+  canMoveLater: boolean;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  function move(direction: "earlier" | "later") {
+    startTransition(async () => {
+      try {
+        await moveItemPhoto(itemId, photoId, direction);
+        router.refresh();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Nie udało się zmienić kolejności");
+      }
+    });
+  }
+
+  return (
+    <div className="absolute left-1 top-1 flex gap-0.5">
+      <button
+        type="button"
+        disabled={!canMoveEarlier || isPending}
+        onClick={() => move("earlier")}
+        aria-label="Przesuń wcześniej"
+        className="flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white disabled:opacity-30"
+      >
+        ‹
+      </button>
+      <button
+        type="button"
+        disabled={!canMoveLater || isPending}
+        onClick={() => move("later")}
+        aria-label="Przesuń później"
+        className="flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white disabled:opacity-30"
+      >
+        ›
+      </button>
+    </div>
+  );
+}
+
 export function PhotoGrid({
   photos,
   signedUrlByPath,
   emptyText,
+  itemId,
 }: {
   photos: ItemPhoto[];
   signedUrlByPath: Record<string, string>;
   emptyText: string;
+  // Reorder controls only render when passed — some callers (e.g. a photo
+  // set's own sub-grid) don't want them.
+  itemId?: string;
 }) {
   const [zoomedUrl, setZoomedUrl] = useState<string | null>(null);
 
@@ -27,7 +86,7 @@ export function PhotoGrid({
   return (
     <>
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {photos.map((photo) => {
+        {photos.map((photo, index) => {
           const url = signedUrlByPath[photo.storage_path];
           if (!url) return null;
           return (
@@ -39,6 +98,14 @@ export function PhotoGrid({
                 onClick={() => setZoomedUrl(url)}
                 className="aspect-square w-full cursor-zoom-in rounded-[var(--radius-sm)] object-cover transition-opacity hover:opacity-80"
               />
+              {itemId && (
+                <ReorderControls
+                  itemId={itemId}
+                  photoId={photo.id}
+                  canMoveEarlier={index > 0}
+                  canMoveLater={index < photos.length - 1}
+                />
+              )}
               <div className="absolute bottom-1 right-1">
                 <DownloadPhotoButton url={url} filename={`${photo.id}.jpg`} />
               </div>

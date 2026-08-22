@@ -15,6 +15,21 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+// New photos append after whatever's already there (working and final
+// photos are ordered independently) rather than colliding at the column
+// default of 0, which would make every fresh upload sort first/tied.
+export async function getNextPhotoSortOrder(itemId: string, isWorkingPhoto: boolean): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from("item_photos")
+    .select("sort_order")
+    .eq("item_id", itemId)
+    .eq("is_working_photo", isWorkingPhoto)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.sort_order ?? -1) + 1;
+}
+
 // Cheap existence check — no signing calls at all, just which items have at
 // least one photo row. Used to decide whether a list row should render a
 // lazy-loading thumbnail slot or the plain "no photo" placeholder, without
@@ -49,15 +64,15 @@ export async function loadItemPhotoUrls(
   if (ids.length === 0) return { photoUrlByItem, thumbUrlByItem };
 
   // Each item's photos are entirely within one chunk (chunking splits by
-  // id, not by time), so per-chunk ordering still preserves "earliest
-  // upload wins" below even though chunks aren't merged in global order.
+  // id, not by time), so per-chunk ordering still preserves "first in
+  // manual order wins" below even though chunks aren't merged globally.
   const chunkResults = await Promise.all(
     chunk(ids, ID_CHUNK_SIZE).map((idChunk) =>
       supabaseAdmin
         .from("item_photos")
         .select("item_id, storage_path, is_working_photo")
         .in("item_id", idChunk)
-        .order("uploaded_at", { ascending: true })
+        .order("sort_order", { ascending: true })
     )
   );
   const photos = chunkResults.flatMap((r) => r.data ?? []);

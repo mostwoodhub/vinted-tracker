@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
+import { getNextPhotoSortOrder } from "@/lib/item-photos";
 
 // Final ("listing") photos are grouped into sets — e.g. shot on different
 // backgrounds — so the same shoes can be posted on several accounts of the
@@ -71,6 +72,7 @@ export async function uploadPhotosToSet(
     return { status: "error", error: "Wybierz co najmniej jedno zdjęcie" };
   }
 
+  let nextSortOrder = await getNextPhotoSortOrder(itemId, false);
   for (const photo of photos) {
     const extension = photo.name.includes(".")
       ? photo.name.slice(photo.name.lastIndexOf("."))
@@ -88,6 +90,7 @@ export async function uploadPhotosToSet(
       storage_path: path,
       is_working_photo: false,
       photo_set_id: photoSetId,
+      sort_order: nextSortOrder++,
     });
 
     if (photoRowError) return { status: "error", error: photoRowError.message };

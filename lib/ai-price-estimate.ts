@@ -32,7 +32,7 @@ export async function generateIntakeEstimate(itemId: string) {
     .select("storage_path")
     .eq("item_id", itemId)
     .eq("is_working_photo", true)
-    .order("uploaded_at", { ascending: true })
+    .order("sort_order", { ascending: true })
     .limit(4);
 
   if (!photos || photos.length === 0) return;
