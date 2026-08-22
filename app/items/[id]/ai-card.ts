@@ -76,6 +76,8 @@ Zidentyfikuj dokładny model butów na podstawie zdjęć, a następnie wygeneruj
 - Allegro: tytuł do ${PLATFORM_LIMITS.allegro.title} znaków, opis do ${PLATFORM_LIMITS.allegro.description} znaków
 - OLX: tytuł do ${PLATFORM_LIMITS.olx.title} znaków, opis do ${PLATFORM_LIMITS.olx.description} znaków
 
+Nie pisz w opisie nic o odbiorze osobistym, wysyłce, kurierze ani kosztach/warunkach dostawy — to ustawiane jest osobno na każdej platformie, nie jest częścią opisu produktu.
+
 Dodatkowo, na podstawie modelu, stanu, wad oraz historii sprzedaży tej marki, zaproponuj rozsądną cenę sprzedaży (suggestedPrice, w złotych) i krótko uzasadnij (priceReasoning, 1-2 zdania). Jeśli brak historii, oprzyj się na ogólnej wiedzy o wartości rynkowej tego modelu.
 
 Odpowiedz wyłącznie przez wywołanie narzędzia submit_listing_data.`;
