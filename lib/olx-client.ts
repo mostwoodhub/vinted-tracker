@@ -21,7 +21,7 @@ export const OLX_ADVERTISER_TYPE = "business" as const;
 // account owner approves the app, so this must be publicly reachable (not
 // localhost) and must exactly match what's registered as this app's
 // callback URI on developer.olx.pl.
-export const OLX_REDIRECT_URI = "https://vinted-tracker.vercel.app/api/olx/callback";
+export const OLX_REDIRECT_URI = "https://vinted-tracker-khaki.vercel.app/api/olx/callback";
 
 export type OlxAuthResult =
   | { ok: true; accessToken: string }
