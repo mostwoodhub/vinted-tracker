@@ -138,43 +138,25 @@ export async function uploadWorkingPhotos(
 
 // Manual reordering — matters most for final photos, since OLX/AI card
 // generation only take the first N (see publishOlxAdvert, generateAiCard):
-// which photo lands first is a real choice, not just upload order. Swaps
-// sort_order with the immediate neighbor in the same group (working/final)
-// rather than renumbering the whole list, so this stays a small, cheap
-// two-row update no matter how many photos the item has.
-export async function moveItemPhoto(
+// which photo lands first is a real choice, not just upload order. Takes
+// the full new order for one group (working or final — PhotoGrid only ever
+// passes ids from the single group it renders) since the client already
+// knows the final arrangement after a drag, and just writes sort_order =
+// index for each id.
+export async function reorderItemPhotos(
   itemId: string,
-  photoId: string,
-  direction: "earlier" | "later"
+  photoIds: string[]
 ): Promise<{ status: "idle" | "success" | "error"; error?: string }> {
   const access = await checkRole("photographer", "intake", "admin");
   if (!access.ok) return { status: "error", error: access.error };
 
-  const { data: current } = await supabaseAdmin
-    .from("item_photos")
-    .select("id, sort_order, is_working_photo")
-    .eq("id", photoId)
-    .single();
-  if (!current) return { status: "error", error: "Nie znaleziono zdjęcia" };
-
-  let neighborQuery = supabaseAdmin
-    .from("item_photos")
-    .select("id, sort_order")
-    .eq("item_id", itemId)
-    .eq("is_working_photo", current.is_working_photo);
-  neighborQuery =
-    direction === "earlier"
-      ? neighborQuery.lt("sort_order", current.sort_order).order("sort_order", { ascending: false })
-      : neighborQuery.gt("sort_order", current.sort_order).order("sort_order", { ascending: true });
-  const { data: neighbor } = await neighborQuery.limit(1).maybeSingle();
-  if (!neighbor) return { status: "success" };
-
-  const [{ error: error1 }, { error: error2 }] = await Promise.all([
-    supabaseAdmin.from("item_photos").update({ sort_order: neighbor.sort_order }).eq("id", current.id),
-    supabaseAdmin.from("item_photos").update({ sort_order: current.sort_order }).eq("id", neighbor.id),
-  ]);
-  if (error1) return { status: "error", error: error1.message };
-  if (error2) return { status: "error", error: error2.message };
+  const results = await Promise.all(
+    photoIds.map((id, index) =>
+      supabaseAdmin.from("item_photos").update({ sort_order: index }).eq("id", id).eq("item_id", itemId)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { status: "error", error: failed.error.message };
 
   revalidatePath(`/items/${itemId}`);
 

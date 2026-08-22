@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DownloadPhotoButton } from "@/app/DownloadPhotoButton";
-import { moveItemPhoto } from "./actions";
+import { reorderItemPhotos } from "./actions";
 import { mutedTextClass } from "@/lib/ui-classes";
 
 type ItemPhoto = {
@@ -11,59 +11,11 @@ type ItemPhoto = {
   storage_path: string;
 };
 
-// Arrow buttons over drag-and-drop on purpose — HTML5 native drag doesn't
-// work on touch devices at all, and this app's photo work happens mostly on
-// employees' phones (see the rest of this codebase's mobile-first history).
-// A tap works identically everywhere.
-function ReorderControls({
-  itemId,
-  photoId,
-  canMoveEarlier,
-  canMoveLater,
-}: {
-  itemId: string;
-  photoId: string;
-  canMoveEarlier: boolean;
-  canMoveLater: boolean;
-}) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-
-  function move(direction: "earlier" | "later") {
-    startTransition(async () => {
-      try {
-        await moveItemPhoto(itemId, photoId, direction);
-        router.refresh();
-      } catch (err) {
-        alert(err instanceof Error ? err.message : "Nie udało się zmienić kolejności");
-      }
-    });
-  }
-
-  return (
-    <div className="absolute left-1 top-1 flex gap-0.5">
-      <button
-        type="button"
-        disabled={!canMoveEarlier || isPending}
-        onClick={() => move("earlier")}
-        aria-label="Przesuń wcześniej"
-        className="flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white disabled:opacity-30"
-      >
-        ‹
-      </button>
-      <button
-        type="button"
-        disabled={!canMoveLater || isPending}
-        onClick={() => move("later")}
-        aria-label="Przesuń później"
-        className="flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white disabled:opacity-30"
-      >
-        ›
-      </button>
-    </div>
-  );
-}
-
+// Pointer Events instead of HTML5 drag-and-drop — HTML5 DnD doesn't fire at
+// all on touch devices, and this app's photo work happens mostly on
+// employees' phones. Pointer events unify mouse/touch/pen in one model, so
+// the same handler drags on both. A dedicated handle (not the photo itself)
+// avoids fighting the image's own click-to-zoom.
 export function PhotoGrid({
   photos,
   signedUrlByPath,
@@ -73,24 +25,91 @@ export function PhotoGrid({
   photos: ItemPhoto[];
   signedUrlByPath: Record<string, string>;
   emptyText: string;
-  // Reorder controls only render when passed — some callers (e.g. a photo
+  // Reorder handles only render when passed — some callers (e.g. a photo
   // set's own sub-grid) don't want them.
   itemId?: string;
 }) {
   const [zoomedUrl, setZoomedUrl] = useState<string | null>(null);
+  const [order, setOrder] = useState(photos);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const containerRefs = useRef(new Map<string, HTMLDivElement>());
+  const draggingIdRef = useRef<string | null>(null);
+
+  // Server data (a fresh upload, another viewer's edit) always wins over
+  // whatever's mid-drag locally — not mirroring a prop for its own sake.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOrder(photos);
+  }, [photos]);
 
   if (photos.length === 0) {
     return <p className={`text-sm ${mutedTextClass}`}>{emptyText}</p>;
   }
 
+  function handlePointerDown(e: React.PointerEvent<HTMLButtonElement>, photoId: string) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    draggingIdRef.current = photoId;
+    setDraggingId(photoId);
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    const dragId = draggingIdRef.current;
+    if (!dragId) return;
+    const x = e.clientX;
+    const y = e.clientY;
+    let overId: string | null = null;
+    for (const [id, el] of containerRefs.current) {
+      const rect = el.getBoundingClientRect();
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        overId = id;
+        break;
+      }
+    }
+    if (overId && overId !== dragId) {
+      setOrder((prev) => {
+        const fromIndex = prev.findIndex((p) => p.id === dragId);
+        const toIndex = prev.findIndex((p) => p.id === overId);
+        if (fromIndex === -1 || toIndex === -1) return prev;
+        const next = [...prev];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        return next;
+      });
+    }
+  }
+
+  function handlePointerUp() {
+    draggingIdRef.current = null;
+    setDraggingId(null);
+    if (!itemId) return;
+    const photoIds = order.map((p) => p.id);
+    startTransition(async () => {
+      try {
+        await reorderItemPhotos(itemId, photoIds);
+        router.refresh();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Nie udało się zmienić kolejności");
+      }
+    });
+  }
+
   return (
     <>
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {photos.map((photo, index) => {
+        {order.map((photo) => {
           const url = signedUrlByPath[photo.storage_path];
           if (!url) return null;
           return (
-            <div key={photo.id} className="relative">
+            <div
+              key={photo.id}
+              ref={(el) => {
+                if (el) containerRefs.current.set(photo.id, el);
+                else containerRefs.current.delete(photo.id);
+              }}
+              className={`relative ${draggingId === photo.id ? "opacity-50" : ""}`}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={url}
@@ -99,12 +118,18 @@ export function PhotoGrid({
                 className="aspect-square w-full cursor-zoom-in rounded-[var(--radius-sm)] object-cover transition-opacity hover:opacity-80"
               />
               {itemId && (
-                <ReorderControls
-                  itemId={itemId}
-                  photoId={photo.id}
-                  canMoveEarlier={index > 0}
-                  canMoveLater={index < photos.length - 1}
-                />
+                <button
+                  type="button"
+                  onPointerDown={(e) => handlePointerDown(e, photo.id)}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  aria-label="Przeciągnij, aby zmienić kolejność"
+                  style={{ touchAction: "none" }}
+                  className="absolute left-1 top-1 flex h-6 w-6 cursor-grab items-center justify-center rounded-full bg-black/60 text-sm text-white active:cursor-grabbing"
+                >
+                  ⠿
+                </button>
               )}
               <div className="absolute bottom-1 right-1">
                 <DownloadPhotoButton url={url} filename={`${photo.id}.jpg`} />
