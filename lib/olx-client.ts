@@ -15,7 +15,12 @@ const HEADERS = { Version: "2.0", "Content-Type": "application/json" };
 export const OLX_CITY_ID = 15241;
 
 export const OLX_CONTACT = { name: "Butmos", phone: "730358095" };
-export const OLX_ADVERTISER_TYPE = "business" as const;
+// OLX overrides this from the account's own registration regardless of
+// what's sent — verified live: sending "business" still created the advert
+// as "private" (matching the antvnt2025 account's actual OLX registration).
+// Kept as a request field since the API requires one, but this constant
+// isn't actually load-bearing.
+export const OLX_ADVERTISER_TYPE = "private" as const;
 
 // Vercel production domain — OLX's own servers redirect here after the
 // account owner approves the app, so this must be publicly reachable (not
@@ -163,6 +168,22 @@ export type OlxAdvert = {
 
 export type OlxResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
+// Inconsistent across this API: category/city/attribute lookups (and, it
+// turns out, advert creation — verified live on 2026-08-22, contrary to
+// what the create-advert path's response shape was assumed to be) wrap the
+// real payload in {"data": ...}; other endpoints don't. Unwrapping
+// defensively here means a genuine top-level field named "data" would be
+// the only thing this could get wrong, which none of these responses have.
+function unwrapOlxData(data: unknown): Record<string, unknown> {
+  if (data && typeof data === "object" && "data" in data) {
+    const inner = (data as { data: unknown }).data;
+    if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+      return inner as Record<string, unknown>;
+    }
+  }
+  return (data ?? {}) as Record<string, unknown>;
+}
+
 function olxErrorMessage(data: unknown, status: number): string {
   if (data && typeof data === "object" && "error" in data) {
     const err = (data as { error: unknown }).error;
@@ -265,7 +286,11 @@ export async function createOlxAdvert(
 
   const data = await res.json().catch(() => null);
   if (!res.ok) return { ok: false, error: olxErrorMessage(data, res.status) };
-  return { ok: true, data: { id: data.id, status: data.status, url: data.url } };
+  const advert = unwrapOlxData(data);
+  return {
+    ok: true,
+    data: { id: advert.id as number, status: advert.status as string, url: advert.url as string },
+  };
 }
 
 // is_success distinguishes "sold" from "took it down for another reason" —
@@ -296,7 +321,8 @@ export async function getOlxAdvert(
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) return { ok: false, error: olxErrorMessage(data, res.status) };
-  return { ok: true, data: { status: data.status, url: data.url } };
+  const advert = unwrapOlxData(data);
+  return { ok: true, data: { status: advert.status as string, url: advert.url as string } };
 }
 
 export async function getOlxAdvertStatistics(
@@ -308,12 +334,13 @@ export async function getOlxAdvertStatistics(
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) return { ok: false, error: olxErrorMessage(data, res.status) };
+  const stats = unwrapOlxData(data);
   return {
     ok: true,
     data: {
-      advertViews: data.advert_views ?? 0,
-      phoneViews: data.phone_views ?? 0,
-      usersObserving: data.users_observing ?? 0,
+      advertViews: (stats.advert_views as number) ?? 0,
+      phoneViews: (stats.phone_views as number) ?? 0,
+      usersObserving: (stats.users_observing as number) ?? 0,
     },
   };
 }
