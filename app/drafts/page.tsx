@@ -21,7 +21,7 @@ export default async function DraftsPage() {
     supabaseAdmin
       .from("items")
       .select(
-        "id, internal_number, legacy_number, brand, model, size, price, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at))"
+        "id, internal_number, legacy_number, brand, model, size, price, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at, olx_advert_id, olx_url, olx_status))"
       )
       .eq("status", "ai_card_ready")
       .is("deleted_at", null)

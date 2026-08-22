@@ -7,9 +7,12 @@ import {
   markReadyToPublish,
   addListingPublication,
   removeListingPublication,
+  publishOlxAdvert,
+  refreshOlxAdvertStatus,
   type SaveDraftState,
   type PublishState,
   type PublicationActionState,
+  type RefreshOlxState,
 } from "./actions";
 import {
   buttonPrimaryClass,
@@ -39,6 +42,9 @@ export type Publication = {
   id: string;
   accountName: string;
   photoSetId: string | null;
+  olxAdvertId: number | null;
+  olxUrl: string | null;
+  olxStatus: string | null;
 };
 
 export type Listing = {
@@ -65,6 +71,8 @@ const saveInitialState: SaveDraftState = { status: "idle" };
 const publishInitialState: PublishState = { status: "idle" };
 const addPublicationInitialState: PublicationActionState = { status: "idle" };
 const removePublicationInitialState: PublicationActionState = { status: "idle" };
+const publishOlxInitialState: PublicationActionState = { status: "idle" };
+const refreshOlxInitialState: RefreshOlxState = { status: "idle" };
 
 function SaveButton() {
   const { pending } = useFormStatus();
@@ -154,6 +162,61 @@ function RemovePublicationButton() {
   );
 }
 
+// Reconciliation for the one publication path that's a real API listing —
+// see refreshOlxAdvertStatus. Only rendered when the publication actually
+// has an olxAdvertId (i.e. it went through publishOlxAdvert, not a manual
+// AddPublicationForm entry). Dispatches the action directly (no <form>
+// wrapper) — this whole editor already lives inside one outer <form> (see
+// ListingsEditor's saveAction), and HTML doesn't allow nested forms; a
+// browser silently "flattens" that by closing the outer one early, which
+// desyncs from what React server-rendered and crashes hydration. A plain
+// button avoids adding to that pre-existing structural issue.
+function OlxStatusBadge({ publication }: { publication: Publication }) {
+  const [state, dispatch, isPending] = useActionState(refreshOlxAdvertStatus, refreshOlxInitialState);
+
+  if (!publication.olxAdvertId) return null;
+
+  const status = state.status === "success" ? state.olxStatus : publication.olxStatus;
+
+  function handleRefresh() {
+    const formData = new FormData();
+    formData.set("publicationId", publication.id);
+    formData.set("olxAdvertId", String(publication.olxAdvertId));
+    dispatch(formData);
+  }
+
+  return (
+    <div className="flex items-center gap-1 text-xs">
+      {publication.olxUrl && (
+        <a
+          href={publication.olxUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[var(--color-accent)] underline"
+        >
+          {status ?? "sprawdź"}
+        </a>
+      )}
+      {!publication.olxUrl && <span className={mutedTextClass}>{status ?? "—"}</span>}
+      {state.status === "success" && state.advertViews != null && (
+        <span className={mutedTextClass}>· {state.advertViews} wyśw.</span>
+      )}
+      <button
+        type="button"
+        onClick={handleRefresh}
+        disabled={isPending}
+        aria-label="Odśwież status OLX"
+        className="rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-xs font-medium text-[var(--color-text)] transition-opacity hover:opacity-80"
+      >
+        {isPending ? "…" : "🔄"}
+      </button>
+      {state.status === "error" && (
+        <span className="text-[var(--color-danger)]">{state.error}</span>
+      )}
+    </div>
+  );
+}
+
 function RemovePublicationForm({
   itemId,
   publication,
@@ -182,6 +245,7 @@ function RemovePublicationForm({
           {photoSetLabel ? ` · ${photoSetLabel}` : ""}
         </span>
         <div className="flex items-center gap-1">
+          <OlxStatusBadge publication={publication} />
           <CopyDraftButton
             title={title}
             description={description}
@@ -275,6 +339,64 @@ function AddPublicationForm({
   );
 }
 
+// The one publication path that's a real API call instead of manual
+// bookkeeping — see publishOlxAdvert. Kept separate from AddPublicationForm
+// since it needs no account picker (always "OLX API") and can fail for API
+// reasons (category/attribute mismatch, OLX rejecting the request) that a
+// manual publication never can. Dispatches directly rather than wrapping a
+// <form> — see the comment on OlxStatusBadge for why: this whole editor is
+// already inside one outer <form>, and HTML forbids nesting another.
+function PublishOlxApiForm({
+  itemId,
+  listingId,
+  photoSets,
+}: {
+  itemId: string;
+  listingId: string;
+  photoSets: PhotoSetOption[];
+}) {
+  const [state, dispatch, isPending] = useActionState(publishOlxAdvert, publishOlxInitialState);
+  const [photoSetId, setPhotoSetId] = useState("");
+
+  function handlePublish() {
+    const formData = new FormData();
+    formData.set("itemId", itemId);
+    formData.set("listingId", listingId);
+    formData.set("photoSetId", photoSetId);
+    dispatch(formData);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1">
+        {photoSets.length > 0 && (
+          <select
+            value={photoSetId}
+            onChange={(e) => setPhotoSetId(e.target.value)}
+            className={`${inputClass} text-xs`}
+          >
+            <option value="">Bez zestawu zdjęć</option>
+            {photoSets.map((set) => (
+              <option key={set.id} value={set.id}>
+                {set.label || "Zestaw zdjęć"}
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="button" onClick={handlePublish} disabled={isPending} className={buttonPrimaryClass}>
+          {isPending ? "Publikowanie…" : "🚀 Publikuj automatycznie (OLX API)"}
+        </button>
+      </div>
+      {state.status === "error" && (
+        <span className="text-xs text-[var(--color-danger)]">{state.error}</span>
+      )}
+      {state.status === "success" && (
+        <span className={`text-xs ${successTextClass}`}>Opublikowano na OLX.</span>
+      )}
+    </div>
+  );
+}
+
 function PlatformPublications({
   itemId,
   listing,
@@ -307,6 +429,9 @@ function PlatformPublications({
           price={price}
         />
       ))}
+      {listing.platform === "olx" && (
+        <PublishOlxApiForm itemId={itemId} listingId={listing.id} photoSets={photoSets} />
+      )}
       <AddPublicationForm
         itemId={itemId}
         listingId={listing.id}

@@ -13,6 +13,9 @@ export type RawListingWithPublications = {
     account_name: string;
     photo_set_id: string | null;
     removed_at: string | null;
+    olx_advert_id: number | null;
+    olx_url: string | null;
+    olx_status: string | null;
   }[];
 };
 
@@ -28,6 +31,13 @@ export function mapListingsForEditor(raw: RawListingWithPublications[] | null | 
     status: listing.status,
     publications: (listing.listing_publications ?? [])
       .filter((p) => !p.removed_at)
-      .map((p) => ({ id: p.id, accountName: p.account_name, photoSetId: p.photo_set_id })),
+      .map((p) => ({
+        id: p.id,
+        accountName: p.account_name,
+        photoSetId: p.photo_set_id,
+        olxAdvertId: p.olx_advert_id,
+        olxUrl: p.olx_url,
+        olxStatus: p.olx_status,
+      })),
   }));
 }

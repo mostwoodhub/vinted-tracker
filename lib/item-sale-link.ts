@@ -1,5 +1,46 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getOlxToken, deactivateOlxAdvert } from "@/lib/olx-client";
+
+// Fire-and-forget: an item selling must never be blocked or slowed by OLX
+// being unreachable. Looks up any still-live OLX publication for this item
+// (olx_advert_id set, never removed) and deactivates it as "sold" on OLX's
+// side too, so a listing doesn't sit live after the pair is gone.
+async function deactivateOlxListingsForItem(itemId: string): Promise<void> {
+  try {
+    const { data: publications } = await supabaseAdmin
+      .from("listing_publications")
+      .select("id, olx_advert_id")
+      .eq("item_id", itemId)
+      .not("olx_advert_id", "is", null)
+      .is("removed_at", null);
+
+    if (!publications || publications.length === 0) return;
+
+    const auth = await getOlxToken();
+    if (!auth.ok) {
+      console.error(`[item-sale-link] OLX auth failed while deactivating listings for item ${itemId}: ${auth.error}`);
+      return;
+    }
+
+    for (const pub of publications) {
+      const result = await deactivateOlxAdvert(auth.accessToken, pub.olx_advert_id, true);
+      if (result.ok) {
+        await supabaseAdmin
+          .from("listing_publications")
+          .update({ olx_status: "removed_by_user", olx_synced_at: new Date().toISOString() })
+          .eq("id", pub.id);
+      } else {
+        await supabaseAdmin
+          .from("listing_publications")
+          .update({ olx_last_error: result.error })
+          .eq("id", pub.id);
+      }
+    }
+  } catch (err) {
+    console.error(`[item-sale-link] Nie udalo sie wylaczyc ogloszenia OLX dla towaru ${itemId}:`, err);
+  }
+}
 
 // Sales are recorded through a free-typed "legacy_shoe_id" field rather than
 // a real foreign key into `items` — the sales form predates the batch/
@@ -40,6 +81,8 @@ async function markItemSoldById(itemId: string): Promise<void> {
       from_status: item.status,
       to_status: "sold",
     });
+
+    await deactivateOlxListingsForItem(item.id);
   } catch (err) {
     console.error(`[item-sale-link] Nie udalo sie oznaczyc towaru jako sprzedany (id=${itemId}):`, err);
   }
@@ -62,33 +105,16 @@ export async function markItemSoldByShoeId(
     .filter(Boolean);
 
   for (const legacyNumber of legacyNumbers) {
-    try {
-      const { data: candidates } = await supabaseAdmin
-        .from("items")
-        .select("id, status")
-        .eq("legacy_number", legacyNumber);
+    const { data: candidates } = await supabaseAdmin
+      .from("items")
+      .select("id")
+      .eq("legacy_number", legacyNumber);
 
-      const rows = candidates ?? [];
-      // legacy_number should be unique in practice — if more than one item
-      // shares it (a duplicate manual entry), don't guess which one sold.
-      if (rows.length !== 1) continue;
+    const rows = candidates ?? [];
+    // legacy_number should be unique in practice — if more than one item
+    // shares it (a duplicate manual entry), don't guess which one sold.
+    if (rows.length !== 1) continue;
 
-      const item = rows[0];
-      if (item.status === "sold") continue;
-
-      const { error: updateError } = await supabaseAdmin
-        .from("items")
-        .update({ status: "sold" })
-        .eq("id", item.id);
-      if (updateError) continue;
-
-      await supabaseAdmin.from("item_status_log").insert({
-        item_id: item.id,
-        from_status: item.status,
-        to_status: "sold",
-      });
-    } catch (err) {
-      console.error(`[item-sale-link] Nie udalo sie oznaczyc towaru jako sprzedany (${legacyNumber}):`, err);
-    }
+    await markItemSoldById(rows[0].id);
   }
 }

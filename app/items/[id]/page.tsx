@@ -63,7 +63,7 @@ export default async function ItemPage({
       supabaseAdmin
         .from("items")
         .select(
-          "*, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at))"
+          "*, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at, olx_advert_id, olx_url, olx_status))"
         )
         .eq("id", id)
         .single(),
@@ -72,7 +72,7 @@ export default async function ItemPage({
         .from("item_photos")
         .select("id, storage_path, is_working_photo, photo_set_id")
         .eq("item_id", id)
-        .order("uploaded_at", { ascending: true }),
+        .order("sort_order", { ascending: true }),
       supabaseAdmin
         .from("item_photo_sets")
         .select("id, label, account_name, sort_order")
@@ -280,6 +280,7 @@ export default async function ItemPage({
               photos={workingPhotos}
               signedUrlByPath={Object.fromEntries(signedUrlByPath)}
               emptyText="Brak zdjęć roboczych."
+              itemId={item.id}
             />
             <WorkingPhotosUpload itemId={item.id} />
           </div>
@@ -292,6 +293,7 @@ export default async function ItemPage({
               photos={finalPhotos}
               signedUrlByPath={Object.fromEntries(signedUrlByPath)}
               emptyText="Brak zdjęć finalnych."
+              itemId={item.id}
             />
             <FinalPhotosUpload itemId={item.id} />
           </div>
