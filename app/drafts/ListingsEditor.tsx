@@ -9,10 +9,13 @@ import {
   removeListingPublication,
   publishOlxAdvert,
   refreshOlxAdvertStatus,
+  publishAllegroOffer,
+  refreshAllegroOfferStatus,
   type SaveDraftState,
   type PublishState,
   type PublicationActionState,
   type RefreshOlxState,
+  type RefreshAllegroState,
 } from "./actions";
 import {
   buttonPrimaryClass,
@@ -45,6 +48,9 @@ export type Publication = {
   olxAdvertId: number | null;
   olxUrl: string | null;
   olxStatus: string | null;
+  allegroOfferId: string | null;
+  allegroUrl: string | null;
+  allegroStatus: string | null;
 };
 
 export type Listing = {
@@ -73,6 +79,8 @@ const addPublicationInitialState: PublicationActionState = { status: "idle" };
 const removePublicationInitialState: PublicationActionState = { status: "idle" };
 const publishOlxInitialState: PublicationActionState = { status: "idle" };
 const refreshOlxInitialState: RefreshOlxState = { status: "idle" };
+const publishAllegroInitialState: PublicationActionState = { status: "idle" };
+const refreshAllegroInitialState: RefreshAllegroState = { status: "idle" };
 
 function SaveButton() {
   const { pending } = useFormStatus();
@@ -164,6 +172,14 @@ const OLX_STATUS_LABELS: Record<string, string> = {
   blocked: "Zablokowane",
 };
 
+// Raw Allegro publication.status values shown as short Polish labels.
+const ALLEGRO_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "Aktywne",
+  INACTIVE: "Nieaktywne",
+  ENDED: "Zakończone",
+  ENDING: "Kończy się",
+};
+
 // Reconciliation for the one publication path that's a real API listing —
 // see refreshOlxAdvertStatus. Only rendered when the publication actually
 // has an olxAdvertId (i.e. it went through publishOlxAdvert, not a manual
@@ -220,6 +236,53 @@ function OlxStatusBadge({ publication }: { publication: Publication }) {
   );
 }
 
+// Mirrors OlxStatusBadge for the Allegro API publication path. Only
+// rendered when the publication has an allegroOfferId (went through
+// publishAllegroOffer, not a manual AddPublicationForm entry).
+function AllegroStatusBadge({ publication }: { publication: Publication }) {
+  const [state, dispatch, isPending] = useActionState(refreshAllegroOfferStatus, refreshAllegroInitialState);
+
+  if (!publication.allegroOfferId) return null;
+
+  const rawStatus = state.status === "success" ? state.allegroStatus : publication.allegroStatus;
+  const status = rawStatus ? ALLEGRO_STATUS_LABELS[rawStatus] ?? rawStatus : null;
+
+  function handleRefresh() {
+    const formData = new FormData();
+    formData.set("publicationId", publication.id);
+    formData.set("allegroOfferId", String(publication.allegroOfferId));
+    dispatch(formData);
+  }
+
+  return (
+    <div className="flex items-center gap-1 text-xs">
+      {publication.allegroUrl && (
+        <a
+          href={publication.allegroUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[var(--color-accent)] underline"
+        >
+          {status ?? "sprawdź"}
+        </a>
+      )}
+      {!publication.allegroUrl && <span className={mutedTextClass}>{status ?? "—"}</span>}
+      <button
+        type="button"
+        onClick={handleRefresh}
+        disabled={isPending}
+        aria-label="Odśwież status Allegro"
+        className="rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-xs font-medium text-[var(--color-text)] transition-opacity hover:opacity-80"
+      >
+        {isPending ? "…" : "🔄"}
+      </button>
+      {state.status === "error" && (
+        <span className="text-[var(--color-danger)]">{state.error}</span>
+      )}
+    </div>
+  );
+}
+
 function RemovePublicationForm({
   itemId,
   publication,
@@ -260,6 +323,7 @@ function RemovePublicationForm({
         </span>
         <div className="flex items-center gap-1">
           <OlxStatusBadge publication={publication} />
+          <AllegroStatusBadge publication={publication} />
           <CopyDraftButton
             title={title}
             description={description}
@@ -435,6 +499,83 @@ function PublishOlxApiForm({
   );
 }
 
+// Mirrors PublishOlxApiForm for Allegro — see publishAllegroOffer. Needs two
+// extra manual fields (Kolor/Materiał zewnętrzny) that OLX doesn't require:
+// Allegro's shoe categories treat both as required product parameters this
+// app has no matching item data for, so the publisher fills them in by hand
+// right before publishing rather than the app guessing.
+function PublishAllegroApiForm({
+  itemId,
+  listingId,
+  photoSets,
+}: {
+  itemId: string;
+  listingId: string;
+  photoSets: PhotoSetOption[];
+}) {
+  const [state, dispatch, isPending] = useActionState(publishAllegroOffer, publishAllegroInitialState);
+  const [photoSetId, setPhotoSetId] = useState("");
+  const [color, setColor] = useState("");
+  const [material, setMaterial] = useState("");
+
+  function handlePublish() {
+    const formData = new FormData();
+    formData.set("itemId", itemId);
+    formData.set("listingId", listingId);
+    formData.set("photoSetId", photoSetId);
+    formData.set("color", color);
+    formData.set("material", material);
+    dispatch(formData);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1">
+        <input
+          value={color}
+          onChange={(e) => setColor(e.target.value)}
+          placeholder="Kolor (np. czarny)"
+          className={`${inputClass} text-xs`}
+        />
+        <input
+          value={material}
+          onChange={(e) => setMaterial(e.target.value)}
+          placeholder="Materiał zewnętrzny (np. skóra naturalna)"
+          className={`${inputClass} text-xs`}
+        />
+        {photoSets.length > 0 && (
+          <select
+            value={photoSetId}
+            onChange={(e) => setPhotoSetId(e.target.value)}
+            className={`${inputClass} text-xs`}
+          >
+            <option value="">Bez zestawu zdjęć</option>
+            {photoSets.map((set) => (
+              <option key={set.id} value={set.id}>
+                {set.label || "Zestaw zdjęć"}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          onClick={handlePublish}
+          disabled={isPending || !color.trim() || !material.trim()}
+          className="flex min-h-10 w-full items-center justify-center rounded-full bg-[var(--color-accent)] px-4 py-2 text-center text-xs font-medium leading-tight text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {isPending ? "Publikowanie…" : "🚀 Publikuj automatycznie"}
+        </button>
+      </div>
+      {state.status === "error" && (
+        <span className="text-xs text-[var(--color-danger)]">{state.error}</span>
+      )}
+      {state.status === "success" && (
+        <span className={`text-xs ${successTextClass}`}>Opublikowano na Allegro.</span>
+      )}
+    </div>
+  );
+}
+
 function PlatformPublications({
   itemId,
   listing,
@@ -454,6 +595,9 @@ function PlatformPublications({
   // against a second click creating a second live advert.
   const hasActiveOlxApiPublication = listing.publications.some(
     (p) => p.accountName === "OLX API"
+  );
+  const hasActiveAllegroApiPublication = listing.publications.some(
+    (p) => p.accountName === "Allegro API"
   );
 
   return (
@@ -475,6 +619,9 @@ function PlatformPublications({
       ))}
       {listing.platform === "olx" && !hasActiveOlxApiPublication && (
         <PublishOlxApiForm itemId={itemId} listingId={listing.id} photoSets={photoSets} />
+      )}
+      {listing.platform === "allegro" && !hasActiveAllegroApiPublication && (
+        <PublishAllegroApiForm itemId={itemId} listingId={listing.id} photoSets={photoSets} />
       )}
       <AddPublicationForm
         itemId={itemId}

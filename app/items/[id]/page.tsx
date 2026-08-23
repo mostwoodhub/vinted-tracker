@@ -63,7 +63,7 @@ export default async function ItemPage({
       supabaseAdmin
         .from("items")
         .select(
-          "*, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at, olx_advert_id, olx_url, olx_status))"
+          "*, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at, olx_advert_id, olx_url, olx_status, allegro_offer_id, allegro_url, allegro_status))"
         )
         .eq("id", id)
         .single(),

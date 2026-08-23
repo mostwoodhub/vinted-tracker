@@ -16,6 +16,9 @@ export type RawListingWithPublications = {
     olx_advert_id: number | null;
     olx_url: string | null;
     olx_status: string | null;
+    allegro_offer_id: string | null;
+    allegro_url: string | null;
+    allegro_status: string | null;
   }[];
 };
 
@@ -38,6 +41,9 @@ export function mapListingsForEditor(raw: RawListingWithPublications[] | null | 
         olxAdvertId: p.olx_advert_id,
         olxUrl: p.olx_url,
         olxStatus: p.olx_status,
+        allegroOfferId: p.allegro_offer_id,
+        allegroUrl: p.allegro_url,
+        allegroStatus: p.allegro_status,
       })),
   }));
 }

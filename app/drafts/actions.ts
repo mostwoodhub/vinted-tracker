@@ -14,6 +14,17 @@ import {
   getOlxAdvertStatistics,
   deactivateOlxAdvert,
 } from "@/lib/olx-client";
+import {
+  getAllegroToken,
+  suggestAllegroCategory,
+  getAllegroCategoryParameters,
+  buildAllegroParameters,
+  uploadAllegroImage,
+  createAllegroOffer,
+  getAllegroOffer,
+  endAllegroOffer,
+  ALLEGRO_MAX_PHOTOS,
+} from "@/lib/allegro-client";
 
 const PLATFORMS = ["vinted", "allegro", "olx"];
 
@@ -289,6 +300,159 @@ export async function publishOlxAdvert(
   return { status: "success" };
 }
 
+// Real listing on Allegro, mirroring publishOlxAdvert. Always filed under
+// "Allegro API" so it's visually distinct from manual Allegro postings.
+// Unlike OLX, Allegro's shoe categories require Kolor/Materiał zewnętrzny —
+// parameters this app doesn't track on items — so the caller supplies them
+// by hand right before publishing (see PublishAllegroApiForm).
+export async function publishAllegroOffer(
+  _prevState: PublicationActionState,
+  formData: FormData
+): Promise<PublicationActionState> {
+  const access = await checkRole("publisher", "admin");
+  if (!access.ok) return { status: "error", error: access.error };
+
+  const listingId = String(formData.get("listingId") ?? "").trim();
+  const itemId = String(formData.get("itemId") ?? "").trim();
+  const photoSetId = String(formData.get("photoSetId") ?? "").trim();
+  const color = String(formData.get("color") ?? "").trim();
+  const material = String(formData.get("material") ?? "").trim();
+
+  if (!listingId) return { status: "error", error: "Brak identyfikatora ogłoszenia" };
+  if (!itemId) return { status: "error", error: "Brak identyfikatora towaru" };
+  if (!color) return { status: "error", error: "Podaj kolor" };
+  if (!material) return { status: "error", error: "Podaj materiał zewnętrzny" };
+
+  const [{ data: listing }, { data: item }] = await Promise.all([
+    supabaseAdmin
+      .from("marketplace_listings")
+      .select("title, description")
+      .eq("id", listingId)
+      .single(),
+    supabaseAdmin
+      .from("items")
+      .select("brand, size, condition, model, insole_length, price, status")
+      .eq("id", itemId)
+      .single(),
+  ]);
+
+  if (!listing) return { status: "error", error: "Nie znaleziono ogłoszenia" };
+  if (!item) return { status: "error", error: "Nie znaleziono towaru" };
+  if (!item.price) return { status: "error", error: "Towar nie ma ustawionej ceny" };
+
+  const { data: existing } = await supabaseAdmin
+    .from("listing_publications")
+    .select("id")
+    .eq("listing_id", listingId)
+    .eq("account_name", "Allegro API")
+    .is("removed_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (existing) {
+    return { status: "error", error: "To ogłoszenie jest już opublikowane przez Allegro API." };
+  }
+
+  let photoQuery = supabaseAdmin
+    .from("item_photos")
+    .select("storage_path")
+    .eq("item_id", itemId)
+    .eq("is_working_photo", false)
+    .order("sort_order", { ascending: true });
+  photoQuery = photoSetId ? photoQuery.eq("photo_set_id", photoSetId) : photoQuery.is("photo_set_id", null);
+  const { data: photoRows } = await photoQuery;
+
+  if (!photoRows || photoRows.length === 0) {
+    return { status: "error", error: "Brak zdjęć finalnych do opublikowania" };
+  }
+
+  const auth = await getAllegroToken();
+  if (!auth.ok) return { status: "error", error: auth.error };
+
+  const category = await suggestAllegroCategory(auth.accessToken, listing.title ?? "");
+  if (!category.ok) return { status: "error", error: category.error };
+
+  const categoryParams = await getAllegroCategoryParameters(auth.accessToken, category.data);
+  if (!categoryParams.ok) return { status: "error", error: categoryParams.error };
+
+  const built = buildAllegroParameters(categoryParams.data, {
+    condition: item.condition,
+    size: item.size,
+    brand: item.brand,
+    model: item.model,
+    insoleLength: item.insole_length,
+    color,
+    material,
+  });
+  if (!built.ok) return { status: "error", error: built.error };
+
+  // Signed just before the Allegro upload call, not reused/cached — same
+  // reasoning as publishOlxAdvert's imageUrls.
+  const cappedPhotoRows = photoRows.slice(0, ALLEGRO_MAX_PHOTOS);
+  const { data: signedPhotos, error: signError } = await supabaseAdmin.storage
+    .from("item-photos")
+    .createSignedUrls(
+      cappedPhotoRows.map((p) => p.storage_path),
+      600
+    );
+  if (signError) return { status: "error", error: signError.message };
+  const sourceUrls = (signedPhotos ?? []).map((p) => p.signedUrl).filter((u): u is string => Boolean(u));
+  if (sourceUrls.length === 0) return { status: "error", error: "Nie udało się przygotować zdjęć dla Allegro" };
+
+  // Allegro doesn't accept an external URL directly in the offer — each
+  // photo has to be uploaded to Allegro's own image host first.
+  const uploadedImages: string[] = [];
+  for (const url of sourceUrls) {
+    const uploaded = await uploadAllegroImage(auth.accessToken, url);
+    if (!uploaded.ok) return { status: "error", error: uploaded.error };
+    uploadedImages.push(uploaded.data);
+  }
+
+  const offer = await createAllegroOffer(auth.accessToken, {
+    title: listing.title ?? "",
+    description: listing.description ?? "",
+    categoryId: category.data,
+    price: item.price,
+    offerParameters: built.data.offerParameters,
+    productParameters: built.data.productParameters,
+    images: uploadedImages,
+    active: true,
+  });
+  if (!offer.ok) return { status: "error", error: offer.error };
+
+  const { error: insertError } = await supabaseAdmin.from("listing_publications").insert({
+    listing_id: listingId,
+    item_id: itemId,
+    account_name: "Allegro API",
+    photo_set_id: photoSetId || null,
+    allegro_offer_id: offer.data.id,
+    allegro_url: offer.data.url,
+    allegro_status: offer.data.status,
+    allegro_synced_at: new Date().toISOString(),
+  });
+  if (insertError) return { status: "error", error: insertError.message };
+
+  if (ADVANCEABLE_ITEM_STATUSES.includes(item.status)) {
+    const { error: statusError } = await supabaseAdmin
+      .from("items")
+      .update({ status: "published" })
+      .eq("id", itemId);
+    if (statusError) return { status: "error", error: statusError.message };
+
+    await supabaseAdmin.from("item_status_log").insert({
+      item_id: itemId,
+      from_status: item.status,
+      to_status: "published",
+    });
+  }
+
+  revalidatePath("/drafts");
+  revalidatePath(`/items/${itemId}`);
+  revalidatePath("/warehouse");
+  revalidatePath("/dashboard");
+
+  return { status: "success" };
+}
+
 export async function removeListingPublication(
   _prevState: PublicationActionState,
   formData: FormData
@@ -308,7 +472,7 @@ export async function removeListingPublication(
   // fine — the row still gets removed either way.
   const { data: publication } = await supabaseAdmin
     .from("listing_publications")
-    .select("olx_advert_id")
+    .select("olx_advert_id, allegro_offer_id")
     .eq("id", publicationId)
     .maybeSingle();
 
@@ -316,6 +480,13 @@ export async function removeListingPublication(
     const auth = await getOlxToken();
     if (auth.ok) {
       await deactivateOlxAdvert(auth.accessToken, publication.olx_advert_id, false);
+    }
+  }
+
+  if (publication?.allegro_offer_id) {
+    const auth = await getAllegroToken();
+    if (auth.ok) {
+      await endAllegroOffer(auth.accessToken, publication.allegro_offer_id);
     }
   }
 
@@ -427,4 +598,46 @@ export async function refreshOlxAdvertStatus(
     olxStatus: advert.data.status,
     advertViews: stats.ok ? stats.data.advertViews : undefined,
   };
+}
+
+export type RefreshAllegroState = {
+  status: "idle" | "success" | "error";
+  error?: string;
+  allegroStatus?: string;
+};
+
+// Pulls the live offer status from Allegro for one publication — pure
+// reconciliation, same shape as refreshOlxAdvertStatus. Allegro doesn't
+// expose a simple per-offer view-count endpoint the way OLX does, so
+// there's no analogous stat to surface here.
+export async function refreshAllegroOfferStatus(
+  _prevState: RefreshAllegroState,
+  formData: FormData
+): Promise<RefreshAllegroState> {
+  const access = await checkRole("publisher", "admin");
+  if (!access.ok) return { status: "error", error: access.error };
+
+  const publicationId = String(formData.get("publicationId") ?? "").trim();
+  const offerId = String(formData.get("allegroOfferId") ?? "").trim();
+  if (!publicationId || !offerId) {
+    return { status: "error", error: "Brak identyfikatora oferty Allegro" };
+  }
+
+  const auth = await getAllegroToken();
+  if (!auth.ok) return { status: "error", error: auth.error };
+
+  const offer = await getAllegroOffer(auth.accessToken, offerId);
+  if (!offer.ok) return { status: "error", error: offer.error };
+
+  await supabaseAdmin
+    .from("listing_publications")
+    .update({
+      allegro_status: offer.data.status,
+      allegro_synced_at: new Date().toISOString(),
+    })
+    .eq("id", publicationId);
+
+  revalidatePath("/drafts");
+
+  return { status: "success", allegroStatus: offer.data.status };
 }

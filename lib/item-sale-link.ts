@@ -1,6 +1,7 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getOlxToken, deactivateOlxAdvert } from "@/lib/olx-client";
+import { getAllegroToken, endAllegroOffer } from "@/lib/allegro-client";
 
 // Fire-and-forget: an item selling must never be blocked or slowed by OLX
 // being unreachable. Looks up any still-live OLX publication for this item
@@ -39,6 +40,44 @@ async function deactivateOlxListingsForItem(itemId: string): Promise<void> {
     }
   } catch (err) {
     console.error(`[item-sale-link] Nie udalo sie wylaczyc ogloszenia OLX dla towaru ${itemId}:`, err);
+  }
+}
+
+// Same idea as deactivateOlxListingsForItem, for Allegro — an item selling
+// must never be blocked or slowed by Allegro being unreachable.
+async function endAllegroListingsForItem(itemId: string): Promise<void> {
+  try {
+    const { data: publications } = await supabaseAdmin
+      .from("listing_publications")
+      .select("id, allegro_offer_id")
+      .eq("item_id", itemId)
+      .not("allegro_offer_id", "is", null)
+      .is("removed_at", null);
+
+    if (!publications || publications.length === 0) return;
+
+    const auth = await getAllegroToken();
+    if (!auth.ok) {
+      console.error(`[item-sale-link] Allegro auth failed while ending listings for item ${itemId}: ${auth.error}`);
+      return;
+    }
+
+    for (const pub of publications) {
+      const result = await endAllegroOffer(auth.accessToken, pub.allegro_offer_id);
+      if (result.ok) {
+        await supabaseAdmin
+          .from("listing_publications")
+          .update({ allegro_status: "ENDED", allegro_synced_at: new Date().toISOString() })
+          .eq("id", pub.id);
+      } else {
+        await supabaseAdmin
+          .from("listing_publications")
+          .update({ allegro_last_error: result.error })
+          .eq("id", pub.id);
+      }
+    }
+  } catch (err) {
+    console.error(`[item-sale-link] Nie udalo sie zakonczyc oferty Allegro dla towaru ${itemId}:`, err);
   }
 }
 
@@ -83,6 +122,7 @@ async function markItemSoldById(itemId: string): Promise<void> {
     });
 
     await deactivateOlxListingsForItem(item.id);
+    await endAllegroListingsForItem(item.id);
   } catch (err) {
     console.error(`[item-sale-link] Nie udalo sie oznaczyc towaru jako sprzedany (id=${itemId}):`, err);
   }
