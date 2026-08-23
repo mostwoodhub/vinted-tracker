@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
   saveDraftChanges,
@@ -11,6 +11,7 @@ import {
   refreshOlxAdvertStatus,
   publishAllegroOffer,
   refreshAllegroOfferStatus,
+  getAllegroCategoryOptions,
   type SaveDraftState,
   type PublishState,
   type PublicationActionState,
@@ -517,6 +518,32 @@ function PublishAllegroApiForm({
   const [photoSetId, setPhotoSetId] = useState("");
   const [color, setColor] = useState("");
   const [material, setMaterial] = useState("");
+  const [optionsStatus, setOptionsStatus] = useState<"loading" | "loaded" | "error">("loading");
+  const [colorOptions, setColorOptions] = useState<string[]>([]);
+  const [materialOptions, setMaterialOptions] = useState<string[]>([]);
+  const [optionsError, setOptionsError] = useState("");
+
+  // Kolor/Materiał have to match Allegro's own dictionary for the category
+  // resolved from this listing's title exactly — a free-typed guess like
+  // "Skóra" instead of "skóra naturalna" gets rejected at publish time, so
+  // the real options are fetched once up front and offered as a dropdown.
+  useEffect(() => {
+    let cancelled = false;
+    getAllegroCategoryOptions(listingId).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setColorOptions(result.colorOptions);
+        setMaterialOptions(result.materialOptions);
+        setOptionsStatus("loaded");
+      } else {
+        setOptionsError(result.error);
+        setOptionsStatus("error");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [listingId]);
 
   function handlePublish() {
     const formData = new FormData();
@@ -530,19 +557,44 @@ function PublishAllegroApiForm({
 
   return (
     <div className="flex flex-col gap-1">
+      {optionsStatus === "loading" && (
+        <span className={`text-xs ${mutedTextClass}`}>Ładowanie opcji Allegro (Kolor, Materiał)…</span>
+      )}
+      {optionsStatus === "error" && (
+        <span className="text-xs text-[var(--color-danger)]">
+          Nie udało się pobrać opcji Allegro: {optionsError}
+        </span>
+      )}
+      {optionsStatus === "loaded" && (
       <div className="flex flex-wrap items-center gap-1">
-        <input
+        <select
           value={color}
           onChange={(e) => setColor(e.target.value)}
-          placeholder="Kolor (np. czarny)"
           className={`${inputClass} text-xs`}
-        />
-        <input
+        >
+          <option value="" disabled>
+            Kolor…
+          </option>
+          {colorOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        <select
           value={material}
           onChange={(e) => setMaterial(e.target.value)}
-          placeholder="Materiał zewnętrzny (np. skóra naturalna)"
           className={`${inputClass} text-xs`}
-        />
+        >
+          <option value="" disabled>
+            Materiał zewnętrzny…
+          </option>
+          {materialOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
         {photoSets.length > 0 && (
           <select
             value={photoSetId}
@@ -566,6 +618,7 @@ function PublishAllegroApiForm({
           {isPending ? "Publikowanie…" : "🚀 Publikuj automatycznie"}
         </button>
       </div>
+      )}
       {state.status === "error" && (
         <span className="text-xs text-[var(--color-danger)]">{state.error}</span>
       )}

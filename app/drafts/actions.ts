@@ -300,6 +300,46 @@ export async function publishOlxAdvert(
   return { status: "success" };
 }
 
+export type AllegroCategoryOptionsResult =
+  | { ok: true; colorOptions: string[]; materialOptions: string[] }
+  | { ok: false; error: string };
+
+// Kolor/Materiał zewnętrzny are free-typed by the publisher (see
+// publishAllegroOffer's comment on why), but the exact string has to match
+// Allegro's own dictionary for the category resolved from this listing's
+// title — verified live that a close-but-not-exact value like "Skóra"
+// instead of "skóra naturalna" gets rejected. Called once when
+// PublishAllegroApiForm mounts so it can render <select> dropdowns instead
+// of asking the publisher to guess/remember the exact wording.
+export async function getAllegroCategoryOptions(
+  listingId: string
+): Promise<AllegroCategoryOptionsResult> {
+  const access = await checkRole("publisher", "admin");
+  if (!access.ok) return { ok: false, error: access.error };
+
+  const { data: listing } = await supabaseAdmin
+    .from("marketplace_listings")
+    .select("title")
+    .eq("id", listingId)
+    .single();
+  if (!listing?.title) return { ok: false, error: "Brak tytułu ogłoszenia" };
+
+  const auth = await getAllegroToken();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const category = await suggestAllegroCategory(auth.accessToken, listing.title);
+  if (!category.ok) return { ok: false, error: category.error };
+
+  const categoryParams = await getAllegroCategoryParameters(auth.accessToken, category.data);
+  if (!categoryParams.ok) return { ok: false, error: categoryParams.error };
+
+  const colorOptions = categoryParams.data.find((p) => p.name === "Kolor")?.dictionary.map((o) => o.value) ?? [];
+  const materialOptions =
+    categoryParams.data.find((p) => p.name === "Materiał zewnętrzny")?.dictionary.map((o) => o.value) ?? [];
+
+  return { ok: true, colorOptions, materialOptions };
+}
+
 // Real listing on Allegro, mirroring publishOlxAdvert. Always filed under
 // "Allegro API" so it's visually distinct from manual Allegro postings.
 // Unlike OLX, Allegro's shoe categories require Kolor/Materiał zewnętrzny —
