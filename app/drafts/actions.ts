@@ -12,6 +12,7 @@ import {
   createOlxAdvert,
   getOlxAdvert,
   getOlxAdvertStatistics,
+  deactivateOlxAdvert,
 } from "@/lib/olx-client";
 
 const PLATFORMS = ["vinted", "allegro", "olx"];
@@ -176,6 +177,22 @@ export async function publishOlxAdvert(
   if (!item) return { status: "error", error: "Nie znaleziono towaru" };
   if (!item.price) return { status: "error", error: "Towar nie ma ustawionej ceny" };
 
+  // Nothing in the UI used to stop a second click from creating a second
+  // live advert for the same listing — verified live: two clicks a few
+  // seconds apart made two real OLX adverts, both of which OLX itself then
+  // flagged "disabled" as duplicates.
+  const { data: existing } = await supabaseAdmin
+    .from("listing_publications")
+    .select("id")
+    .eq("listing_id", listingId)
+    .eq("account_name", "OLX API")
+    .is("removed_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (existing) {
+    return { status: "error", error: "To ogłoszenie jest już opublikowane przez OLX API." };
+  }
+
   let photoQuery = supabaseAdmin
     .from("item_photos")
     .select("storage_path")
@@ -283,6 +300,24 @@ export async function removeListingPublication(
   const itemId = String(formData.get("itemId") ?? "").trim();
 
   if (!publicationId) return { status: "error", error: "Brak identyfikatora publikacji" };
+
+  // Removing an OLX-API publication here only ever touched our own
+  // bookkeeping — the actual advert stayed live on OLX with nobody the
+  // wiser. Best-effort: OLX may have already disabled/expired it on its
+  // own (its deactivate command 400s on anything not "active"), which is
+  // fine — the row still gets removed either way.
+  const { data: publication } = await supabaseAdmin
+    .from("listing_publications")
+    .select("olx_advert_id")
+    .eq("id", publicationId)
+    .maybeSingle();
+
+  if (publication?.olx_advert_id) {
+    const auth = await getOlxToken();
+    if (auth.ok) {
+      await deactivateOlxAdvert(auth.accessToken, publication.olx_advert_id, false);
+    }
+  }
 
   const { error } = await supabaseAdmin
     .from("listing_publications")

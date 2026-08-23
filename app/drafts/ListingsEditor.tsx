@@ -148,19 +148,21 @@ function CopyDraftButton({
   );
 }
 
-function RemovePublicationButton() {
-  const { pending } = useFormStatus();
-
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="rounded-full bg-[var(--color-danger-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-danger)] transition-opacity hover:opacity-80"
-    >
-      {pending ? "…" : "Usuń"}
-    </button>
-  );
-}
+// Raw OLX status codes shown as short Polish labels instead of the API's
+// own English/technical wording.
+const OLX_STATUS_LABELS: Record<string, string> = {
+  new: "Nowe (moderacja)",
+  active: "Aktywne",
+  limited: "Ograniczone",
+  disabled: "Wyłączone",
+  removed_by_user: "Usunięte",
+  removed_by_moderator: "Usunięte (moderacja)",
+  outdated: "Wygasłe",
+  unconfirmed: "Niepotwierdzone",
+  unpaid: "Nieopłacone",
+  moderated: "W moderacji",
+  blocked: "Zablokowane",
+};
 
 // Reconciliation for the one publication path that's a real API listing —
 // see refreshOlxAdvertStatus. Only rendered when the publication actually
@@ -176,7 +178,8 @@ function OlxStatusBadge({ publication }: { publication: Publication }) {
 
   if (!publication.olxAdvertId) return null;
 
-  const status = state.status === "success" ? state.olxStatus : publication.olxStatus;
+  const rawStatus = state.status === "success" ? state.olxStatus : publication.olxStatus;
+  const status = rawStatus ? OLX_STATUS_LABELS[rawStatus] ?? rawStatus : null;
 
   function handleRefresh() {
     const formData = new FormData();
@@ -232,10 +235,21 @@ function RemovePublicationForm({
   description: string;
   price: number | null;
 }) {
-  const [state, action] = useActionState(
+  const [state, dispatch, isPending] = useActionState(
     removeListingPublication,
     removePublicationInitialState
   );
+
+  // No <form> wrapper — same reason as OlxStatusBadge/PublishOlxApiForm:
+  // this whole editor already lives inside one outer <form>, and a nested
+  // one silently ate clicks after a hydration crash (verified live — Usuń
+  // did nothing at all until this was fixed).
+  function handleRemove() {
+    const formData = new FormData();
+    formData.set("itemId", itemId);
+    formData.set("publicationId", publication.id);
+    dispatch(formData);
+  }
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -253,11 +267,14 @@ function RemovePublicationForm({
             label={`Kopiuj (${publication.accountName})`}
             small
           />
-          <form action={action}>
-            <input type="hidden" name="itemId" value={itemId} />
-            <input type="hidden" name="publicationId" value={publication.id} />
-            <RemovePublicationButton />
-          </form>
+          <button
+            type="button"
+            onClick={handleRemove}
+            disabled={isPending}
+            className="rounded-full bg-[var(--color-danger-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-danger)] transition-opacity hover:opacity-80"
+          >
+            {isPending ? "…" : "Usuń"}
+          </button>
         </div>
       </div>
       {state.status === "error" && (
@@ -267,20 +284,12 @@ function RemovePublicationForm({
   );
 }
 
-function AddPublicationButton() {
-  const { pending } = useFormStatus();
-
-  return (
-    <button type="submit" disabled={pending} className={buttonPrimaryClass}>
-      {pending ? "Dodawanie…" : "+ Dodaj publikację"}
-    </button>
-  );
-}
-
 // Publishing is per-platform *and* per-account, not all-or-nothing: the same
 // draft might go live on Vinted under two different accounts (yours, a
 // family member's) at once. Each posting is tracked separately here so it's
 // obvious which accounts still need the listing pulled down after a sale.
+// No <form> wrapper — see RemovePublicationForm's comment; same nested-form
+// issue applies here.
 function AddPublicationForm({
   itemId,
   listingId,
@@ -292,10 +301,12 @@ function AddPublicationForm({
   accountNames: string[];
   photoSets: PhotoSetOption[];
 }) {
-  const [state, action] = useActionState(
+  const [state, dispatch, isPending] = useActionState(
     addListingPublication,
     addPublicationInitialState
   );
+  const [accountName, setAccountName] = useState("");
+  const [photoSetId, setPhotoSetId] = useState("");
 
   if (accountNames.length === 0) {
     return (
@@ -305,12 +316,23 @@ function AddPublicationForm({
     );
   }
 
+  function handleAdd() {
+    const formData = new FormData();
+    formData.set("itemId", itemId);
+    formData.set("listingId", listingId);
+    formData.set("accountName", accountName);
+    formData.set("photoSetId", photoSetId);
+    dispatch(formData);
+  }
+
   return (
-    <form action={action} className="flex flex-col gap-1">
-      <input type="hidden" name="itemId" value={itemId} />
-      <input type="hidden" name="listingId" value={listingId} />
+    <div className="flex flex-col gap-1">
       <div className="flex flex-wrap gap-1">
-        <select name="accountName" defaultValue="" className={`${inputClass} text-xs`}>
+        <select
+          value={accountName}
+          onChange={(e) => setAccountName(e.target.value)}
+          className={`${inputClass} text-xs`}
+        >
           <option value="" disabled>
             Konto…
           </option>
@@ -321,7 +343,11 @@ function AddPublicationForm({
           ))}
         </select>
         {photoSets.length > 0 && (
-          <select name="photoSetId" defaultValue="" className={`${inputClass} text-xs`}>
+          <select
+            value={photoSetId}
+            onChange={(e) => setPhotoSetId(e.target.value)}
+            className={`${inputClass} text-xs`}
+          >
             <option value="">Bez zestawu zdjęć</option>
             {photoSets.map((set) => (
               <option key={set.id} value={set.id}>
@@ -330,12 +356,19 @@ function AddPublicationForm({
             ))}
           </select>
         )}
-        <AddPublicationButton />
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={isPending || !accountName}
+          className={buttonPrimaryClass}
+        >
+          {isPending ? "Dodawanie…" : "+ Dodaj publikację"}
+        </button>
       </div>
       {state.status === "error" && (
         <span className="text-xs text-[var(--color-danger)]">{state.error}</span>
       )}
-    </form>
+    </div>
   );
 }
 
@@ -383,8 +416,13 @@ function PublishOlxApiForm({
             ))}
           </select>
         )}
-        <button type="button" onClick={handlePublish} disabled={isPending} className={buttonPrimaryClass}>
-          {isPending ? "Publikowanie…" : "🚀 Publikuj automatycznie (OLX API)"}
+        <button
+          type="button"
+          onClick={handlePublish}
+          disabled={isPending}
+          className="flex min-h-10 w-full items-center justify-center rounded-full bg-[var(--color-accent)] px-4 py-2 text-center text-xs font-medium leading-tight text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {isPending ? "Publikowanie…" : "🚀 Publikuj automatycznie"}
         </button>
       </div>
       {state.status === "error" && (
@@ -411,6 +449,12 @@ function PlatformPublications({
   price: number | null;
 }) {
   const photoSetLabelById = new Map(photoSets.map((s) => [s.id, s.label]));
+  // Guards the same thing the server action now also checks — hiding the
+  // button once it's already published is the first line of defense
+  // against a second click creating a second live advert.
+  const hasActiveOlxApiPublication = listing.publications.some(
+    (p) => p.accountName === "OLX API"
+  );
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -429,7 +473,7 @@ function PlatformPublications({
           price={price}
         />
       ))}
-      {listing.platform === "olx" && (
+      {listing.platform === "olx" && !hasActiveOlxApiPublication && (
         <PublishOlxApiForm itemId={itemId} listingId={listing.id} photoSets={photoSets} />
       )}
       <AddPublicationForm
