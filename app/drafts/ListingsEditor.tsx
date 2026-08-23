@@ -18,6 +18,7 @@ import {
   type RefreshOlxState,
   type RefreshAllegroState,
 } from "./actions";
+import type { AllegroManualParam } from "@/lib/allegro-client";
 import {
   buttonPrimaryClass,
   buttonSecondaryClass,
@@ -500,11 +501,13 @@ function PublishOlxApiForm({
   );
 }
 
-// Mirrors PublishOlxApiForm for Allegro — see publishAllegroOffer. Needs two
-// extra manual fields (Kolor/Materiał zewnętrzny) that OLX doesn't require:
-// Allegro's shoe categories treat both as required product parameters this
-// app has no matching item data for, so the publisher fills them in by hand
-// right before publishing rather than the app guessing.
+// Mirrors PublishOlxApiForm for Allegro — see publishAllegroOffer. Allegro's
+// category schema varies a lot (Kolor/Materiał zewnętrzny on a sneaker,
+// Zapięcie/Wysokość obcasa on a boot, ...) — whatever this listing's
+// resolved category needs that this app has no matching item data for gets
+// asked for here as a dynamic field, dropdown for a dictionary parameter,
+// plain input otherwise, rather than the app guessing or hard-coding one
+// field name at a time.
 function PublishAllegroApiForm({
   itemId,
   listingId,
@@ -516,24 +519,17 @@ function PublishAllegroApiForm({
 }) {
   const [state, dispatch, isPending] = useActionState(publishAllegroOffer, publishAllegroInitialState);
   const [photoSetId, setPhotoSetId] = useState("");
-  const [color, setColor] = useState("");
-  const [material, setMaterial] = useState("");
+  const [manualValues, setManualValues] = useState<Record<string, string>>({});
   const [optionsStatus, setOptionsStatus] = useState<"loading" | "loaded" | "error">("loading");
-  const [colorOptions, setColorOptions] = useState<string[]>([]);
-  const [materialOptions, setMaterialOptions] = useState<string[]>([]);
+  const [manualParams, setManualParams] = useState<AllegroManualParam[]>([]);
   const [optionsError, setOptionsError] = useState("");
 
-  // Kolor/Materiał have to match Allegro's own dictionary for the category
-  // resolved from this listing's title exactly — a free-typed guess like
-  // "Skóra" instead of "skóra naturalna" gets rejected at publish time, so
-  // the real options are fetched once up front and offered as a dropdown.
   useEffect(() => {
     let cancelled = false;
     getAllegroCategoryOptions(listingId).then((result) => {
       if (cancelled) return;
       if (result.ok) {
-        setColorOptions(result.colorOptions);
-        setMaterialOptions(result.materialOptions);
+        setManualParams(result.manualParams);
         setOptionsStatus("loaded");
       } else {
         setOptionsError(result.error);
@@ -545,56 +541,57 @@ function PublishAllegroApiForm({
     };
   }, [listingId]);
 
+  const allManualValuesFilled = manualParams.every((param) => manualValues[param.id]?.trim());
+
   function handlePublish() {
     const formData = new FormData();
     formData.set("itemId", itemId);
     formData.set("listingId", listingId);
     formData.set("photoSetId", photoSetId);
-    formData.set("color", color);
-    formData.set("material", material);
+    formData.set("manualValues", JSON.stringify(manualValues));
     dispatch(formData);
   }
 
   return (
     <div className="flex flex-col gap-1">
       {optionsStatus === "loading" && (
-        <span className={`text-xs ${mutedTextClass}`}>Ładowanie opcji Allegro (Kolor, Materiał)…</span>
+        <span className={`text-xs ${mutedTextClass}`}>Ładowanie wymaganych pól Allegro…</span>
       )}
       {optionsStatus === "error" && (
         <span className="text-xs text-[var(--color-danger)]">
-          Nie udało się pobrać opcji Allegro: {optionsError}
+          Nie udało się pobrać wymaganych pól Allegro: {optionsError}
         </span>
       )}
       {optionsStatus === "loaded" && (
       <div className="flex flex-wrap items-center gap-1">
-        <select
-          value={color}
-          onChange={(e) => setColor(e.target.value)}
-          className={`${inputClass} text-xs`}
-        >
-          <option value="" disabled>
-            Kolor…
-          </option>
-          {colorOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-        <select
-          value={material}
-          onChange={(e) => setMaterial(e.target.value)}
-          className={`${inputClass} text-xs`}
-        >
-          <option value="" disabled>
-            Materiał zewnętrzny…
-          </option>
-          {materialOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+        {manualParams.map((param) =>
+          param.options.length > 0 ? (
+            <select
+              key={param.id}
+              value={manualValues[param.id] ?? ""}
+              onChange={(e) => setManualValues((prev) => ({ ...prev, [param.id]: e.target.value }))}
+              className={`${inputClass} text-xs`}
+            >
+              <option value="" disabled>
+                {param.name}…
+              </option>
+              {param.options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              key={param.id}
+              type={param.type === "float" || param.type === "integer" ? "number" : "text"}
+              value={manualValues[param.id] ?? ""}
+              onChange={(e) => setManualValues((prev) => ({ ...prev, [param.id]: e.target.value }))}
+              placeholder={param.unit ? `${param.name} (${param.unit})` : param.name}
+              className={`${inputClass} text-xs`}
+            />
+          )
+        )}
         {photoSets.length > 0 && (
           <select
             value={photoSetId}
@@ -612,7 +609,7 @@ function PublishAllegroApiForm({
         <button
           type="button"
           onClick={handlePublish}
-          disabled={isPending || !color.trim() || !material.trim()}
+          disabled={isPending || !allManualValuesFilled}
           className="flex min-h-10 w-full items-center justify-center rounded-full bg-[var(--color-accent)] px-4 py-2 text-center text-xs font-medium leading-tight text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {isPending ? "Publikowanie…" : "🚀 Publikuj automatycznie"}

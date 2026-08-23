@@ -18,12 +18,14 @@ import {
   getAllegroToken,
   suggestAllegroCategory,
   getAllegroCategoryParameters,
+  getAllegroManualParams,
   buildAllegroParameters,
   uploadAllegroImage,
   createAllegroOffer,
   getAllegroOffer,
   endAllegroOffer,
   ALLEGRO_MAX_PHOTOS,
+  type AllegroManualParam,
 } from "@/lib/allegro-client";
 
 const PLATFORMS = ["vinted", "allegro", "olx"];
@@ -301,16 +303,16 @@ export async function publishOlxAdvert(
 }
 
 export type AllegroCategoryOptionsResult =
-  | { ok: true; colorOptions: string[]; materialOptions: string[] }
+  | { ok: true; manualParams: AllegroManualParam[] }
   | { ok: false; error: string };
 
-// Kolor/Materiał zewnętrzny are free-typed by the publisher (see
-// publishAllegroOffer's comment on why), but the exact string has to match
-// Allegro's own dictionary for the category resolved from this listing's
-// title — verified live that a close-but-not-exact value like "Skóra"
-// instead of "skóra naturalna" gets rejected. Called once when
-// PublishAllegroApiForm mounts so it can render <select> dropdowns instead
-// of asking the publisher to guess/remember the exact wording.
+// The publisher fills in whatever this listing's resolved category needs
+// that this app can't derive automatically (see getAllegroManualParams) —
+// Kolor/Materiał zewnętrzny on a sneaker, Zapięcie/Wysokość obcasa on a
+// boot, potentially something else entirely on a category never seen
+// before. Called once when PublishAllegroApiForm mounts so it can render
+// the right fields instead of asking the publisher to guess/remember exact
+// Allegro dictionary wording.
 export async function getAllegroCategoryOptions(
   listingId: string
 ): Promise<AllegroCategoryOptionsResult> {
@@ -333,18 +335,15 @@ export async function getAllegroCategoryOptions(
   const categoryParams = await getAllegroCategoryParameters(auth.accessToken, category.data);
   if (!categoryParams.ok) return { ok: false, error: categoryParams.error };
 
-  const colorOptions = categoryParams.data.find((p) => p.name === "Kolor")?.dictionary.map((o) => o.value) ?? [];
-  const materialOptions =
-    categoryParams.data.find((p) => p.name === "Materiał zewnętrzny")?.dictionary.map((o) => o.value) ?? [];
-
-  return { ok: true, colorOptions, materialOptions };
+  return { ok: true, manualParams: getAllegroManualParams(categoryParams.data) };
 }
 
 // Real listing on Allegro, mirroring publishOlxAdvert. Always filed under
 // "Allegro API" so it's visually distinct from manual Allegro postings.
-// Unlike OLX, Allegro's shoe categories require Kolor/Materiał zewnętrzny —
-// parameters this app doesn't track on items — so the caller supplies them
-// by hand right before publishing (see PublishAllegroApiForm).
+// Some Allegro categories need product parameters this app doesn't track on
+// items at all (Kolor/Materiał zewnętrzny on a sneaker, Zapięcie/Wysokość
+// obcasa on a boot, ...) — the caller supplies whatever getAllegroManualParams
+// flagged, by hand, right before publishing (see PublishAllegroApiForm).
 export async function publishAllegroOffer(
   _prevState: PublicationActionState,
   formData: FormData
@@ -355,13 +354,16 @@ export async function publishAllegroOffer(
   const listingId = String(formData.get("listingId") ?? "").trim();
   const itemId = String(formData.get("itemId") ?? "").trim();
   const photoSetId = String(formData.get("photoSetId") ?? "").trim();
-  const color = String(formData.get("color") ?? "").trim();
-  const material = String(formData.get("material") ?? "").trim();
+  const manualValuesRaw = String(formData.get("manualValues") ?? "{}");
+  let manualValues: Record<string, string> = {};
+  try {
+    manualValues = JSON.parse(manualValuesRaw);
+  } catch {
+    return { status: "error", error: "Nieprawidłowe dane pól Allegro" };
+  }
 
   if (!listingId) return { status: "error", error: "Brak identyfikatora ogłoszenia" };
   if (!itemId) return { status: "error", error: "Brak identyfikatora towaru" };
-  if (!color) return { status: "error", error: "Podaj kolor" };
-  if (!material) return { status: "error", error: "Podaj materiał zewnętrzny" };
 
   const [{ data: listing }, { data: item }] = await Promise.all([
     supabaseAdmin
@@ -414,15 +416,17 @@ export async function publishAllegroOffer(
   const categoryParams = await getAllegroCategoryParameters(auth.accessToken, category.data);
   if (!categoryParams.ok) return { status: "error", error: categoryParams.error };
 
-  const built = buildAllegroParameters(categoryParams.data, {
-    condition: item.condition,
-    size: item.size,
-    brand: item.brand,
-    model: item.model,
-    insoleLength: item.insole_length,
-    color,
-    material,
-  });
+  const built = buildAllegroParameters(
+    categoryParams.data,
+    {
+      condition: item.condition,
+      size: item.size,
+      brand: item.brand,
+      model: item.model,
+      insoleLength: item.insole_length,
+    },
+    manualValues
+  );
   if (!built.ok) return { status: "error", error: built.error };
 
   // Signed just before the Allegro upload call, not reused/cached — same

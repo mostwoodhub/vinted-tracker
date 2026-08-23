@@ -223,6 +223,7 @@ export type AllegroCategoryParameter = {
   name: string;
   type: string;
   required: boolean;
+  unit: string | null;
   describesProduct: boolean;
   dictionary: AllegroDictionaryOption[];
   maxLength: number | null;
@@ -250,6 +251,7 @@ export async function getAllegroCategoryParameters(
       name: string;
       type: string;
       required: boolean;
+      unit?: string | null;
       options?: { describesProduct?: boolean };
       dictionary?: { id: string; value: string }[];
       restrictions?: { maxLength?: number };
@@ -258,6 +260,7 @@ export async function getAllegroCategoryParameters(
       name: p.name,
       type: p.type,
       required: p.required,
+      unit: p.unit ?? null,
       describesProduct: p.options?.describesProduct ?? false,
       dictionary: p.dictionary ?? [],
       maxLength: p.restrictions?.maxLength ?? null,
@@ -286,12 +289,29 @@ export async function uploadAllegroImage(token: string, sourceUrl: string): Prom
 
 type AllegroParamValue = { id: string; valuesIds?: string[]; values?: string[] };
 
-// Product-describing params this app knowingly never sends despite the
-// category listing them as required — verified live (2026-08-23) that
-// omitting them entirely still produces a clean create (empty
-// validation.errors), so treating them as hard-fail-if-unmapped like every
-// other required param would only block real publishes for no reason.
-const ALLEGRO_SKIP_PARAM_NAMES = new Set(["EAN (GTIN)", "Kod producenta"]);
+// EAN this app knowingly never sends despite some categories listing it as
+// required — verified live (2026-08-23) that omitting it entirely still
+// produces a clean create there. Not a universal rule, though: a later
+// category ("Botki") rejected the create outright over the same treatment
+// of "Kod producenta" ("Nie można stworzyć produktu bez podania poprawnych
+// wartości wszystkich parametrów wymaganych: [Kod producenta]"), so that one
+// is deliberately NOT in this list — it now falls through to the generic
+// manual-field mechanism below like Kolor/Materiał/Zapięcie do.
+const ALLEGRO_SKIP_PARAM_NAMES = new Set(["EAN (GTIN)"]);
+
+// Params this app derives automatically from item data (see
+// buildAllegroParameters) — never offered as a manual field even when
+// required, since a value already gets computed for them one way or
+// another (a dictionary match, an inferred gender, or a hard failure with
+// its own specific message).
+const ALLEGRO_AUTO_HANDLED_PARAM_NAMES = new Set([
+  "Stan",
+  "Marka",
+  "Rozmiar",
+  "Płeć",
+  "Model",
+  "Długość wkładki",
+]);
 
 function findDictionaryOption(
   dictionary: AllegroDictionaryOption[],
@@ -325,9 +345,42 @@ export type AllegroItemFields = {
   brand: string | null;
   model: string | null;
   insoleLength: string | null;
-  color: string;
-  material: string;
 };
+
+export type AllegroManualParam = {
+  id: string;
+  name: string;
+  type: string;
+  unit: string | null;
+  options: string[];
+};
+
+// Every required, product-describing category parameter this app can't
+// derive automatically or safely skip — Kolor and Materiał zewnętrzny on a
+// sneaker, but also Zapięcie or Wysokość obcasa/platformy on a boot, or
+// whatever the next never-seen category turns out to need. Rather than
+// hard-coding one field at a time as each new category surfaces one (that
+// happened twice live already — Materiał zewnętrzny, then Wysokość
+// obcasa/platformy on the very next category), the publish form asks for
+// exactly this list, whatever it is, dictionary fields as a dropdown and
+// everything else as free text/number.
+export function getAllegroManualParams(categoryParameters: AllegroCategoryParameter[]): AllegroManualParam[] {
+  return categoryParameters
+    .filter(
+      (p) =>
+        p.describesProduct &&
+        p.required &&
+        !ALLEGRO_SKIP_PARAM_NAMES.has(p.name) &&
+        !ALLEGRO_AUTO_HANDLED_PARAM_NAMES.has(p.name)
+    )
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      unit: p.unit,
+      options: p.dictionary.map((o) => o.value),
+    }));
+}
 
 export type AllegroBuiltParameters = {
   offerParameters: AllegroParamValue[];
@@ -338,10 +391,12 @@ export type AllegroBuiltParameters = {
 // getAllegroCategoryParameters) — a required parameter this function can't
 // confidently map is a hard failure (better than submitting a value Allegro
 // will reject, or worse, a wrong one it silently accepts), same principle
-// as buildOlxAttributes.
+// as buildOlxAttributes. manualValues carries whatever the publisher typed
+// for the params getAllegroManualParams flagged, keyed by parameter id.
 export function buildAllegroParameters(
   categoryParameters: AllegroCategoryParameter[],
-  item: AllegroItemFields
+  item: AllegroItemFields,
+  manualValues: Record<string, string>
 ): AllegroResult<AllegroBuiltParameters> {
   const offerParameters: AllegroParamValue[] = [];
   const productParameters: AllegroParamValue[] = [];
@@ -360,16 +415,21 @@ export function buildAllegroParameters(
       option = item.size ? findDictionaryOption(param.dictionary, item.size) : null;
     } else if (param.name === "Płeć") {
       option = inferAllegroGenderOption(param.dictionary);
-    } else if (param.name === "Kolor") {
-      option = findDictionaryOption(param.dictionary, item.color);
-    } else if (param.name === "Materiał zewnętrzny") {
-      option = findDictionaryOption(param.dictionary, item.material);
     } else if (param.name === "Model") {
       const trimmed = item.model?.trim() || null;
       stringValue = trimmed && param.maxLength ? trimmed.slice(0, param.maxLength) : trimmed;
     } else if (param.name === "Długość wkładki") {
       const parsed = item.insoleLength ? Number(item.insoleLength.replace(",", ".")) : NaN;
       stringValue = Number.isFinite(parsed) ? String(parsed) : null;
+    } else {
+      const manual = manualValues[param.id]?.trim();
+      if (manual) {
+        if (param.type === "dictionary") {
+          option = findDictionaryOption(param.dictionary, manual);
+        } else {
+          stringValue = param.maxLength ? manual.slice(0, param.maxLength) : manual;
+        }
+      }
     }
 
     const target = param.describesProduct ? productParameters : offerParameters;
