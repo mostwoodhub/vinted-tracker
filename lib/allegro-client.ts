@@ -518,7 +518,14 @@ export async function createAllegroOffer(
       sellingMode: { format: "BUY_NOW", price: { amount: payload.price.toFixed(2), currency: "PLN" } },
       stock: { available: 1, unit: "UNIT" },
       location: ALLEGRO_LOCATION,
-      publication: { status: payload.active ? "ACTIVE" : "INACTIVE" },
+      // Also lists the offer on allegro-business-pl (the B2B marketplace),
+      // not just the consumer allegro-pl one — verified live that this
+      // flips additionalMarketplaces["allegro-business-pl"].publication.state
+      // from "NOT_REQUESTED" to "PENDING" with no validation errors.
+      publication: {
+        status: payload.active ? "ACTIVE" : "INACTIVE",
+        marketplaces: { additional: [{ id: "allegro-business-pl" }] },
+      },
       delivery: { shippingRates: { id: ALLEGRO_SHIPPING_RATES_ID }, handlingTime: "P1D" },
       // "VAT" here, not "VAT_MARGIN" — the seller confirmed this business
       // issues regular VAT invoices, not the used-goods margin scheme.
