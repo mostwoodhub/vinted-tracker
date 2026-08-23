@@ -15,10 +15,12 @@ export function DraftItemCard({
   item,
   accountNames,
   photoSets,
+  finalPhotoIds,
 }: {
   item: Item;
   accountNames: string[];
   photoSets: PhotoSetOption[];
+  finalPhotoIds: string[];
 }) {
   return (
     <div className={`flex flex-col gap-4 ${cardClass}`}>
@@ -32,7 +34,12 @@ export function DraftItemCard({
         </p>
       </div>
 
-      <ListingsEditor item={item} accountNames={accountNames} photoSets={photoSets} />
+      <ListingsEditor
+        item={item}
+        accountNames={accountNames}
+        photoSets={photoSets}
+        finalPhotoIds={finalPhotoIds}
+      />
     </div>
   );
 }

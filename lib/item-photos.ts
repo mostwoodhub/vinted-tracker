@@ -15,6 +15,43 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+// Resolves the actual photo rows to publish for one listing (platform).
+// photoSetId (an alternate account-specific photo shoot) wins outright when
+// set — selectedPhotoIds always refers to the default pool, so it wouldn't
+// resolve against a different set anyway. Otherwise, an explicit
+// selection/order (see marketplace_listings.selected_photo_ids) is honored
+// — Supabase's .in() doesn't preserve array order, so the rows are re-sorted
+// to match selectedPhotoIds by hand. No selection at all falls back to
+// every default-pool final photo in the item's own sort_order, same as
+// before this existed.
+export async function resolveListingPhotoRows(
+  itemId: string,
+  photoSetId: string | null,
+  selectedPhotoIds: string[] | null
+): Promise<{ storage_path: string }[]> {
+  if (!photoSetId && selectedPhotoIds && selectedPhotoIds.length > 0) {
+    const { data } = await supabaseAdmin
+      .from("item_photos")
+      .select("id, storage_path")
+      .in("id", selectedPhotoIds);
+    const pathById = new Map((data ?? []).map((p) => [p.id, p.storage_path]));
+    return selectedPhotoIds
+      .map((id) => pathById.get(id))
+      .filter((path): path is string => Boolean(path))
+      .map((storage_path) => ({ storage_path }));
+  }
+
+  let photoQuery = supabaseAdmin
+    .from("item_photos")
+    .select("storage_path")
+    .eq("item_id", itemId)
+    .eq("is_working_photo", false)
+    .order("sort_order", { ascending: true });
+  photoQuery = photoSetId ? photoQuery.eq("photo_set_id", photoSetId) : photoQuery.is("photo_set_id", null);
+  const { data } = await photoQuery;
+  return data ?? [];
+}
+
 // New photos append after whatever's already there (working and final
 // photos are ordered independently) rather than colliding at the column
 // default of 0, which would make every fresh upload sort first/tied.

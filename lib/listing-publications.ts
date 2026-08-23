@@ -8,6 +8,7 @@ export type RawListingWithPublications = {
   title: string | null;
   description: string | null;
   status: string | null;
+  selected_photo_ids: string[] | null;
   listing_publications: {
     id: string;
     account_name: string;
@@ -32,6 +33,7 @@ export function mapListingsForEditor(raw: RawListingWithPublications[] | null | 
     title: listing.title,
     description: listing.description,
     status: listing.status,
+    photoIds: listing.selected_photo_ids,
     publications: (listing.listing_publications ?? [])
       .filter((p) => !p.removed_at)
       .map((p) => ({

@@ -21,7 +21,7 @@ export default async function DraftsPage() {
     supabaseAdmin
       .from("items")
       .select(
-        "id, internal_number, legacy_number, brand, model, size, price, batches(label), marketplace_listings(id, platform, title, description, status, listing_publications(id, account_name, photo_set_id, removed_at, olx_advert_id, olx_url, olx_status, allegro_offer_id, allegro_url, allegro_status))"
+        "id, internal_number, legacy_number, brand, model, size, price, batches(label), marketplace_listings(id, platform, title, description, status, selected_photo_ids, listing_publications(id, account_name, photo_set_id, removed_at, olx_advert_id, olx_url, olx_status, allegro_offer_id, allegro_url, allegro_status))"
       )
       .eq("status", "ai_card_ready")
       .is("deleted_at", null)
@@ -48,6 +48,26 @@ export default async function DraftsPage() {
     }
   }
 
+  // Same default final-photo pool the "Zdjęcia finalne" grid on the item's
+  // own page shows (is_working_photo=false, photo_set_id is null) — badge
+  // numbers in PhotoOrderPicker only make sense if they match that grid.
+  const finalPhotoIdsByItem = new Map<string, string[]>();
+  if (itemIds.length > 0) {
+    const { data: photoRows } = await supabaseAdmin
+      .from("item_photos")
+      .select("id, item_id")
+      .in("item_id", itemIds)
+      .eq("is_working_photo", false)
+      .is("photo_set_id", null)
+      .order("sort_order", { ascending: true });
+
+    for (const photo of photoRows ?? []) {
+      const list = finalPhotoIdsByItem.get(photo.item_id) ?? [];
+      list.push(photo.id);
+      finalPhotoIdsByItem.set(photo.item_id, list);
+    }
+  }
+
   return (
     <div className={pageWrapClass}>
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-[var(--space-xl)] px-6 py-12">
@@ -66,6 +86,7 @@ export default async function DraftsPage() {
               item={{ ...item, marketplace_listings: mapListingsForEditor(item.marketplace_listings) }}
               accountNames={accountNames}
               photoSets={photoSetsByItem.get(item.id) ?? []}
+              finalPhotoIds={finalPhotoIdsByItem.get(item.id) ?? []}
             />
           ))}
         </div>

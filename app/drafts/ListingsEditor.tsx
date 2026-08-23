@@ -61,6 +61,7 @@ export type Listing = {
   title: string | null;
   description: string | null;
   status: string | null;
+  photoIds: string[] | null;
   publications: Publication[];
 };
 
@@ -626,6 +627,75 @@ function PublishAllegroApiForm({
   );
 }
 
+// Lets the publisher pick a subset of the item's default "Zdjęcia finalne"
+// photos and their upload order, independently per platform (e.g. Allegro
+// gets photos 3, 1, 4 while OLX gets everything in the original order).
+// Badge numbers match the position each photo has in that grid, so an
+// employee can cross-reference "photo 3 in the grid above" directly. No
+// selection (the default, empty value) means "use every final photo in its
+// existing order" — the behavior every listing already had before this.
+function PhotoOrderPicker({
+  finalPhotoIds,
+  value,
+  onChange,
+}: {
+  finalPhotoIds: string[];
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  if (finalPhotoIds.length === 0) return null;
+
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className={`text-xs ${mutedTextClass}`}>
+          {value.length > 0
+            ? `Zdjęcia do publikacji (${value.length}/${finalPhotoIds.length}, w tej kolejności)`
+            : "Zdjęcia do publikacji (wszystkie, w oryginalnej kolejności)"}
+        </span>
+        {value.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="text-xs text-[var(--color-accent)] underline"
+          >
+            Wyczyść
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {finalPhotoIds.map((id, index) => {
+          const orderIndex = value.indexOf(id);
+          const selected = orderIndex !== -1;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => toggle(id)}
+              aria-label={
+                selected
+                  ? `Zdjęcie ${index + 1}, pozycja ${orderIndex + 1} w kolejności publikacji`
+                  : `Zdjęcie ${index + 1}, dodaj do kolejności publikacji`
+              }
+              className={
+                selected
+                  ? "flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-accent)] text-xs font-semibold text-white"
+                  : "flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-surface-2)] text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              }
+            >
+              {selected ? orderIndex + 1 : index + 1}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PlatformPublications({
   itemId,
   listing,
@@ -687,10 +757,12 @@ export function ListingsEditor({
   item,
   accountNames = [],
   photoSets = [],
+  finalPhotoIds = [],
 }: {
   item: ListingsItem;
   accountNames?: string[];
   photoSets?: PhotoSetOption[];
+  finalPhotoIds?: string[];
 }) {
   const [saveState, saveAction] = useActionState(
     saveDraftChanges,
@@ -720,6 +792,14 @@ export function ListingsEditor({
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setCounts((prev) => ({ ...prev, [key]: event.target.value.length }));
     };
+
+  const [photoOrder, setPhotoOrder] = useState<Record<string, string[]>>(() => {
+    const initial: Record<string, string[]> = {};
+    for (const platform of PLATFORM_ORDER) {
+      initial[platform] = listingByPlatform.get(platform)?.photoIds ?? [];
+    }
+    return initial;
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -811,6 +891,19 @@ export function ListingsEditor({
                     price={item.price}
                   />
                 </div>
+
+                <input
+                  type="hidden"
+                  name={`${platform}_photoIds`}
+                  value={JSON.stringify(photoOrder[platform] ?? [])}
+                />
+                <PhotoOrderPicker
+                  finalPhotoIds={finalPhotoIds}
+                  value={photoOrder[platform] ?? []}
+                  onChange={(next) =>
+                    setPhotoOrder((prev) => ({ ...prev, [platform]: next }))
+                  }
+                />
               </div>
             );
           })}

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
+import { resolveListingPhotoRows } from "@/lib/item-photos";
 import {
   getOlxToken,
   suggestOlxCategory,
@@ -63,9 +64,20 @@ export async function saveDraftChanges(
       formData.get(`${platform}_description`) ?? ""
     ).trim();
 
+    let selectedPhotoIds: string[] | null = null;
+    const photoIdsRaw = formData.get(`${platform}_photoIds`);
+    if (typeof photoIdsRaw === "string" && photoIdsRaw) {
+      try {
+        const parsed = JSON.parse(photoIdsRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) selectedPhotoIds = parsed;
+      } catch {
+        // Malformed client-side JSON shouldn't block saving title/description.
+      }
+    }
+
     const { error } = await supabaseAdmin
       .from("marketplace_listings")
-      .update({ title, description })
+      .update({ title, description, selected_photo_ids: selectedPhotoIds })
       .eq("id", listingId);
 
     if (error) return { status: "error", error: error.message };
@@ -176,7 +188,7 @@ export async function publishOlxAdvert(
   const [{ data: listing }, { data: item }] = await Promise.all([
     supabaseAdmin
       .from("marketplace_listings")
-      .select("title, description")
+      .select("title, description, selected_photo_ids")
       .eq("id", listingId)
       .single(),
     supabaseAdmin
@@ -206,14 +218,7 @@ export async function publishOlxAdvert(
     return { status: "error", error: "To ogłoszenie jest już opublikowane przez OLX API." };
   }
 
-  let photoQuery = supabaseAdmin
-    .from("item_photos")
-    .select("storage_path")
-    .eq("item_id", itemId)
-    .eq("is_working_photo", false)
-    .order("sort_order", { ascending: true });
-  photoQuery = photoSetId ? photoQuery.eq("photo_set_id", photoSetId) : photoQuery.is("photo_set_id", null);
-  const { data: photoRows } = await photoQuery;
+  const photoRows = await resolveListingPhotoRows(itemId, photoSetId || null, listing.selected_photo_ids);
 
   if (!photoRows || photoRows.length === 0) {
     return { status: "error", error: "Brak zdjęć finalnych do opublikowania" };
@@ -368,7 +373,7 @@ export async function publishAllegroOffer(
   const [{ data: listing }, { data: item }] = await Promise.all([
     supabaseAdmin
       .from("marketplace_listings")
-      .select("title, description")
+      .select("title, description, selected_photo_ids")
       .eq("id", listingId)
       .single(),
     supabaseAdmin
@@ -394,14 +399,7 @@ export async function publishAllegroOffer(
     return { status: "error", error: "To ogłoszenie jest już opublikowane przez Allegro API." };
   }
 
-  let photoQuery = supabaseAdmin
-    .from("item_photos")
-    .select("storage_path")
-    .eq("item_id", itemId)
-    .eq("is_working_photo", false)
-    .order("sort_order", { ascending: true });
-  photoQuery = photoSetId ? photoQuery.eq("photo_set_id", photoSetId) : photoQuery.is("photo_set_id", null);
-  const { data: photoRows } = await photoQuery;
+  const photoRows = await resolveListingPhotoRows(itemId, photoSetId || null, listing.selected_photo_ids);
 
   if (!photoRows || photoRows.length === 0) {
     return { status: "error", error: "Brak zdjęć finalnych do opublikowania" };
