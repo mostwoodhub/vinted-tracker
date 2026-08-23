@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getBrandSalesHistory } from "@/lib/sales-history";
 import { downloadPhotoAsBase64 } from "@/lib/item-photo-download";
 import { formatPln } from "@/lib/format";
+import { formatItemNumber } from "@/lib/item-number";
 
 const PLATFORM_LIMITS = {
   vinted: { title: 70, description: 1000 },
@@ -28,7 +29,9 @@ type ListingResult = {
 export async function generateAiCard(itemId: string) {
   const { data: item } = await supabaseAdmin
     .from("items")
-    .select("brand, size, condition, condition_detail, defects, price, ai_suggested_price")
+    .select(
+      "brand, size, condition, condition_detail, defects, price, ai_suggested_price, internal_number, legacy_number, batches(label)"
+    )
     .eq("id", itemId)
     .single();
 
@@ -181,15 +184,25 @@ Odpowiedz wyłącznie przez wywołanie narzędzia submit_listing_data.`;
     priceReasoning = priceReasoning ? `${note} ${priceReasoning}` : note;
   }
 
+  // Appended to every platform's description so the seller can identify
+  // which physical pair sold just by reading the (copied or still-live)
+  // listing text — same number ("Stary numer") already written on the item
+  // itself and used to match a sale back to it, see formatItemNumber.
+  const batchLabel = Array.isArray(item.batches) ? item.batches[0]?.label : null;
+  const itemNumber = formatItemNumber(batchLabel, item.internal_number, item.legacy_number);
+  const numberSuffix = `\n\nNr: ${itemNumber}`;
+
   for (const platform of platforms) {
     const listing = result[platform];
     const limits = PLATFORM_LIMITS[platform];
+    const maxBaseLength = Math.max(0, limits.description - numberSuffix.length);
+    const description = `${listing.description.slice(0, maxBaseLength)}${numberSuffix}`;
 
     await supabaseAdmin.from("marketplace_listings").insert({
       item_id: itemId,
       platform,
       title: listing.title.slice(0, limits.title),
-      description: listing.description.slice(0, limits.description),
+      description,
       price: item.price,
       status: "draft",
     });
