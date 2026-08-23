@@ -520,7 +520,9 @@ export async function createAllegroOffer(
       location: ALLEGRO_LOCATION,
       publication: { status: payload.active ? "ACTIVE" : "INACTIVE" },
       delivery: { shippingRates: { id: ALLEGRO_SHIPPING_RATES_ID }, handlingTime: "P1D" },
-      payments: { invoice: "NO_INVOICE" },
+      // "VAT" here, not "VAT_MARGIN" — the seller confirmed this business
+      // issues regular VAT invoices, not the used-goods margin scheme.
+      payments: { invoice: "VAT" },
       afterSalesServices: {
         returnPolicy: { id: ALLEGRO_RETURN_POLICY_ID },
         impliedWarranty: { id: ALLEGRO_IMPLIED_WARRANTY_ID },
