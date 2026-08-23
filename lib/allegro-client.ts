@@ -530,6 +530,12 @@ export async function createAllegroOffer(
       // "VAT" here, not "VAT_MARGIN" — the seller confirmed this business
       // issues regular VAT invoices, not the used-goods margin scheme.
       payments: { invoice: "VAT" },
+      // Without an explicit rate, listing on the business marketplace gets
+      // refused outright (VQR012_OFFER_HAS_NO_TAX_RATE_FOR_MARKETPLACE) —
+      // verified live against a real offer that was stuck REFUSED over
+      // exactly this. 23% is the standard Polish VAT rate for footwear (no
+      // reduced rate applies).
+      taxSettings: { rates: [{ rate: "23.00", countryCode: "PL" }] },
       afterSalesServices: {
         returnPolicy: { id: ALLEGRO_RETURN_POLICY_ID },
         impliedWarranty: { id: ALLEGRO_IMPLIED_WARRANTY_ID },
