@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { removeBackgroundToWhite } from "@/lib/photo-background";
+import { removeBackgroundToWhite, cropTopOfPhoto } from "@/lib/photo-background";
 
 // .in("item_id", ids) puts every id straight into the request URL — past
 // ~200 items that blows the 16KB header limit and the query fails outright
@@ -55,19 +55,20 @@ export async function resolveListingPhotoRows(
 }
 
 // Signs the given photo rows for an external platform (OLX/Allegro) to
-// fetch, optionally running each one through background removal first —
-// see lib/photo-background.ts. Processed copies are written to a
-// "_processed/" prefix in the same bucket under a throwaway random name;
-// left in place rather than deleted right after signing, since OLX fetches
-// the URL asynchronously *after* our request returns (same reasoning as the
-// 600s TTL on the signed URL itself) — deleting immediately would race it.
-// Opt-in and low-volume enough that the modest storage left behind isn't a
-// real concern.
+// fetch, optionally running each one through cropping and/or background
+// removal first — see lib/photo-background.ts (crop happens first: a
+// tighter, already-centered subject is what background removal should work
+// from). Processed copies are written to a "_processed/" prefix in the same
+// bucket under a throwaway random name; left in place rather than deleted
+// right after signing, since OLX fetches the URL asynchronously *after* our
+// request returns (same reasoning as the 600s TTL on the signed URL itself)
+// — deleting immediately would race it. Opt-in and low-volume enough that
+// the modest storage left behind isn't a real concern.
 export async function prepareListingPhotoUrls(
   photoRows: { storage_path: string }[],
-  options: { whiteBackground: boolean }
+  options: { whiteBackground: boolean; cropTop: boolean }
 ): Promise<{ ok: true; urls: string[] } | { ok: false; error: string }> {
-  if (!options.whiteBackground) {
+  if (!options.whiteBackground && !options.cropTop) {
     const { data, error } = await supabaseAdmin.storage
       .from("item-photos")
       .createSignedUrls(
@@ -86,22 +87,22 @@ export async function prepareListingPhotoUrls(
     if (downloadError || !original) {
       return { ok: false, error: `Nie udało się pobrać zdjęcia do przetworzenia: ${row.storage_path}` };
     }
-    const buffer = Buffer.from(await original.arrayBuffer());
+    let buffer: Buffer = Buffer.from(await original.arrayBuffer());
 
-    let processed: Buffer;
     try {
-      processed = await removeBackgroundToWhite(buffer);
+      if (options.cropTop) buffer = await cropTopOfPhoto(buffer);
+      if (options.whiteBackground) buffer = await removeBackgroundToWhite(buffer);
     } catch (err) {
       return {
         ok: false,
-        error: `Nie udało się usunąć tła ze zdjęcia: ${err instanceof Error ? err.message : "nieznany błąd"}`,
+        error: `Nie udało się przetworzyć zdjęcia: ${err instanceof Error ? err.message : "nieznany błąd"}`,
       };
     }
 
     const processedPath = `_processed/${randomUUID()}.jpg`;
     const { error: uploadError } = await supabaseAdmin.storage
       .from("item-photos")
-      .upload(processedPath, processed, { contentType: "image/jpeg" });
+      .upload(processedPath, buffer, { contentType: "image/jpeg" });
     if (uploadError) return { ok: false, error: uploadError.message };
     processedPaths.push(processedPath);
   }

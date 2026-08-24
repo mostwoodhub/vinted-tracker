@@ -26,3 +26,24 @@ export async function removeBackgroundToWhite(imageBuffer: Buffer): Promise<Buff
     .jpeg({ quality: 90 })
     .toBuffer();
 }
+
+// Phone shots of shoes standing on the floor often have the pair sitting in
+// the bottom half of the frame with a lot of empty floor/wall above it —
+// fine at full size, but shrinks the actual product down in a marketplace
+// thumbnail. Trimming a fixed slice off the top re-centers the subject
+// without needing to detect where it actually is.
+const CROP_TOP_PERCENT = 0.15;
+
+export async function cropTopOfPhoto(imageBuffer: Buffer): Promise<Buffer> {
+  const image = sharp(imageBuffer);
+  const metadata = await image.metadata();
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  if (!width || !height) return imageBuffer;
+
+  const cropHeight = Math.round(height * CROP_TOP_PERCENT);
+  return image
+    .extract({ left: 0, top: cropHeight, width, height: height - cropHeight })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+}

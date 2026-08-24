@@ -459,6 +459,7 @@ function PublishOlxApiForm({
   const [state, dispatch, isPending] = useActionState(publishOlxAdvert, publishOlxInitialState);
   const [photoSetId, setPhotoSetId] = useState("");
   const [whiteBackground, setWhiteBackground] = useState(false);
+  const [cropTop, setCropTop] = useState(false);
 
   function handlePublish() {
     const formData = new FormData();
@@ -466,6 +467,7 @@ function PublishOlxApiForm({
     formData.set("listingId", listingId);
     formData.set("photoSetId", photoSetId);
     formData.set("whiteBackground", String(whiteBackground));
+    formData.set("cropTop", String(cropTop));
     dispatch(formData);
   }
 
@@ -494,6 +496,15 @@ function PublishOlxApiForm({
             className={checkboxClass}
           />
           Białe tło
+        </label>
+        <label className="flex items-center gap-1 text-xs text-[var(--color-text)]">
+          <input
+            type="checkbox"
+            checked={cropTop}
+            onChange={(e) => setCropTop(e.target.checked)}
+            className={checkboxClass}
+          />
+          Przytnij górę
         </label>
         <button
           type="button"
@@ -533,6 +544,7 @@ function PublishAllegroApiForm({
   const [state, dispatch, isPending] = useActionState(publishAllegroOffer, publishAllegroInitialState);
   const [photoSetId, setPhotoSetId] = useState("");
   const [whiteBackground, setWhiteBackground] = useState(false);
+  const [cropTop, setCropTop] = useState(false);
   const [manualValues, setManualValues] = useState<Record<string, string>>({});
   const [optionsStatus, setOptionsStatus] = useState<"loading" | "loaded" | "error">("loading");
   const [manualParams, setManualParams] = useState<AllegroManualParam[]>([]);
@@ -563,6 +575,7 @@ function PublishAllegroApiForm({
     formData.set("listingId", listingId);
     formData.set("photoSetId", photoSetId);
     formData.set("whiteBackground", String(whiteBackground));
+    formData.set("cropTop", String(cropTop));
     formData.set("manualValues", JSON.stringify(manualValues));
     dispatch(formData);
   }
@@ -629,6 +642,15 @@ function PublishAllegroApiForm({
             className={checkboxClass}
           />
           Białe tło
+        </label>
+        <label className="flex items-center gap-1 text-xs text-[var(--color-text)]">
+          <input
+            type="checkbox"
+            checked={cropTop}
+            onChange={(e) => setCropTop(e.target.checked)}
+            className={checkboxClass}
+          />
+          Przytnij górę
         </label>
         <button
           type="button"

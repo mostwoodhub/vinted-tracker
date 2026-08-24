@@ -182,6 +182,7 @@ export async function publishOlxAdvert(
   const itemId = String(formData.get("itemId") ?? "").trim();
   const photoSetId = String(formData.get("photoSetId") ?? "").trim();
   const whiteBackground = formData.get("whiteBackground") === "true";
+  const cropTop = formData.get("cropTop") === "true";
 
   if (!listingId) return { status: "error", error: "Brak identyfikatora ogłoszenia" };
   if (!itemId) return { status: "error", error: "Brak identyfikatora towaru" };
@@ -243,7 +244,7 @@ export async function publishOlxAdvert(
   // (multiple accounts/backgrounds), so trim instead of failing.
   const cappedPhotoRows = photoRows.slice(0, photosLimit.data);
 
-  const prepared = await prepareListingPhotoUrls(cappedPhotoRows, { whiteBackground });
+  const prepared = await prepareListingPhotoUrls(cappedPhotoRows, { whiteBackground, cropTop });
   if (!prepared.ok) return { status: "error", error: prepared.error };
   const imageUrls = prepared.urls;
   if (imageUrls.length === 0) return { status: "error", error: "Nie udało się przygotować zdjęć dla OLX" };
@@ -353,6 +354,7 @@ export async function publishAllegroOffer(
   const itemId = String(formData.get("itemId") ?? "").trim();
   const photoSetId = String(formData.get("photoSetId") ?? "").trim();
   const whiteBackground = formData.get("whiteBackground") === "true";
+  const cropTop = formData.get("cropTop") === "true";
   const manualValuesRaw = String(formData.get("manualValues") ?? "{}");
   let manualValues: Record<string, string> = {};
   try {
@@ -422,7 +424,7 @@ export async function publishAllegroOffer(
   if (!built.ok) return { status: "error", error: built.error };
 
   const cappedPhotoRows = photoRows.slice(0, ALLEGRO_MAX_PHOTOS);
-  const prepared = await prepareListingPhotoUrls(cappedPhotoRows, { whiteBackground });
+  const prepared = await prepareListingPhotoUrls(cappedPhotoRows, { whiteBackground, cropTop });
   if (!prepared.ok) return { status: "error", error: prepared.error };
   const sourceUrls = prepared.urls;
   if (sourceUrls.length === 0) return { status: "error", error: "Nie udało się przygotować zdjęć dla Allegro" };
