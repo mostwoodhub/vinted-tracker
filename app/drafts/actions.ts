@@ -31,6 +31,20 @@ import {
 
 const PLATFORMS = ["vinted", "allegro", "olx"];
 
+// The publish forms send the PhotoOrderPicker's current selection as a JSON
+// array on every submit (see publishOlxAdvert/publishAllegroOffer) — a
+// malformed or absent value just means "no explicit selection", same as an
+// empty array, not an error worth failing the whole publish over.
+function parsePhotoIds(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string" || !value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export type SaveDraftState = {
   status: "idle" | "success" | "error";
   error?: string;
@@ -183,6 +197,11 @@ export async function publishOlxAdvert(
   const photoSetId = String(formData.get("photoSetId") ?? "").trim();
   const whiteBackground = formData.get("whiteBackground") === "true";
   const cropTop = formData.get("cropTop") === "true";
+  // The picker's live state, sent fresh on every publish click — not
+  // whatever "Zapisz zmiany" (a separate action) last persisted to
+  // selected_photo_ids. Verified live: relying on the DB value let a
+  // publish silently ignore an unsaved photo selection.
+  const photoIds = parsePhotoIds(formData.get("photoIds"));
 
   if (!listingId) return { status: "error", error: "Brak identyfikatora ogłoszenia" };
   if (!itemId) return { status: "error", error: "Brak identyfikatora towaru" };
@@ -190,7 +209,7 @@ export async function publishOlxAdvert(
   const [{ data: listing }, { data: item }] = await Promise.all([
     supabaseAdmin
       .from("marketplace_listings")
-      .select("title, description, selected_photo_ids")
+      .select("title, description")
       .eq("id", listingId)
       .single(),
     supabaseAdmin
@@ -220,7 +239,7 @@ export async function publishOlxAdvert(
     return { status: "error", error: "To ogłoszenie jest już opublikowane przez OLX API." };
   }
 
-  const photoRows = await resolveListingPhotoRows(itemId, photoSetId || null, listing.selected_photo_ids);
+  const photoRows = await resolveListingPhotoRows(itemId, photoSetId || null, photoIds);
 
   if (!photoRows || photoRows.length === 0) {
     return { status: "error", error: "Brak zdjęć finalnych do opublikowania" };
@@ -355,6 +374,9 @@ export async function publishAllegroOffer(
   const photoSetId = String(formData.get("photoSetId") ?? "").trim();
   const whiteBackground = formData.get("whiteBackground") === "true";
   const cropTop = formData.get("cropTop") === "true";
+  // See publishOlxAdvert's identical comment — the picker's live state, not
+  // whatever was last saved to selected_photo_ids.
+  const photoIds = parsePhotoIds(formData.get("photoIds"));
   const manualValuesRaw = String(formData.get("manualValues") ?? "{}");
   let manualValues: Record<string, string> = {};
   try {
@@ -369,7 +391,7 @@ export async function publishAllegroOffer(
   const [{ data: listing }, { data: item }] = await Promise.all([
     supabaseAdmin
       .from("marketplace_listings")
-      .select("title, description, selected_photo_ids")
+      .select("title, description")
       .eq("id", listingId)
       .single(),
     supabaseAdmin
@@ -395,7 +417,7 @@ export async function publishAllegroOffer(
     return { status: "error", error: "To ogłoszenie jest już opublikowane przez Allegro API." };
   }
 
-  const photoRows = await resolveListingPhotoRows(itemId, photoSetId || null, listing.selected_photo_ids);
+  const photoRows = await resolveListingPhotoRows(itemId, photoSetId || null, photoIds);
 
   if (!photoRows || photoRows.length === 0) {
     return { status: "error", error: "Brak zdjęć finalnych do opublikowania" };

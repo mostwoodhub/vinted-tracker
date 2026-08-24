@@ -451,10 +451,12 @@ function PublishOlxApiForm({
   itemId,
   listingId,
   photoSets,
+  selectedPhotoIds,
 }: {
   itemId: string;
   listingId: string;
   photoSets: PhotoSetOption[];
+  selectedPhotoIds: string[];
 }) {
   const [state, dispatch, isPending] = useActionState(publishOlxAdvert, publishOlxInitialState);
   const [photoSetId, setPhotoSetId] = useState("");
@@ -468,6 +470,12 @@ function PublishOlxApiForm({
     formData.set("photoSetId", photoSetId);
     formData.set("whiteBackground", String(whiteBackground));
     formData.set("cropTop", String(cropTop));
+    // The picker's own state — sent directly so publishing works off
+    // whatever is on screen right now, not whatever was last saved via
+    // "Zapisz zmiany" (a separate action). Verified live this was the bug:
+    // picking photos and publishing without saving first silently
+    // published every default-pool photo instead of the chosen subset.
+    formData.set("photoIds", JSON.stringify(selectedPhotoIds));
     dispatch(formData);
   }
 
@@ -536,10 +544,12 @@ function PublishAllegroApiForm({
   itemId,
   listingId,
   photoSets,
+  selectedPhotoIds,
 }: {
   itemId: string;
   listingId: string;
   photoSets: PhotoSetOption[];
+  selectedPhotoIds: string[];
 }) {
   const [state, dispatch, isPending] = useActionState(publishAllegroOffer, publishAllegroInitialState);
   const [photoSetId, setPhotoSetId] = useState("");
@@ -577,6 +587,9 @@ function PublishAllegroApiForm({
     formData.set("whiteBackground", String(whiteBackground));
     formData.set("cropTop", String(cropTop));
     formData.set("manualValues", JSON.stringify(manualValues));
+    // See PublishOlxApiForm's identical line — publishing must use whatever
+    // is on screen right now, not whatever "Zapisz zmiany" last persisted.
+    formData.set("photoIds", JSON.stringify(selectedPhotoIds));
     dispatch(formData);
   }
 
@@ -747,12 +760,14 @@ function PlatformPublications({
   accountNames,
   photoSets,
   price,
+  selectedPhotoIds,
 }: {
   itemId: string;
   listing: Listing;
   accountNames: string[];
   photoSets: PhotoSetOption[];
   price: number | null;
+  selectedPhotoIds: string[];
 }) {
   const photoSetLabelById = new Map(photoSets.map((s) => [s.id, s.label]));
   // Guards the same thing the server action now also checks — hiding the
@@ -783,10 +798,20 @@ function PlatformPublications({
         />
       ))}
       {listing.platform === "olx" && !hasActiveOlxApiPublication && (
-        <PublishOlxApiForm itemId={itemId} listingId={listing.id} photoSets={photoSets} />
+        <PublishOlxApiForm
+          itemId={itemId}
+          listingId={listing.id}
+          photoSets={photoSets}
+          selectedPhotoIds={selectedPhotoIds}
+        />
       )}
       {listing.platform === "allegro" && !hasActiveAllegroApiPublication && (
-        <PublishAllegroApiForm itemId={itemId} listingId={listing.id} photoSets={photoSets} />
+        <PublishAllegroApiForm
+          itemId={itemId}
+          listingId={listing.id}
+          photoSets={photoSets}
+          selectedPhotoIds={selectedPhotoIds}
+        />
       )}
       <AddPublicationForm
         itemId={itemId}
@@ -934,6 +959,7 @@ export function ListingsEditor({
                     accountNames={accountNames}
                     photoSets={photoSets}
                     price={item.price}
+                    selectedPhotoIds={photoOrder[platform] ?? []}
                   />
                 </div>
 
