@@ -8,9 +8,19 @@ import sharp from "sharp";
 // isolated subject onto a plain white background with sharp (already a
 // project dependency). Takes a few seconds per photo — only invoked when
 // the publisher opts in via the "Białe tło" checkbox, never automatically.
+// The package's ~127MB of ONNX model chunks default to being read off local
+// disk (node_modules/@imgly/background-removal-node/dist/) — fine for a
+// normal server, but on Vercel that directory isn't reliably present in the
+// deployed function (build-time file tracing can't see the dynamic
+// resources.json-driven reads that pick which chunk files to load), which
+// failed with ENOENT the first time this ran in production. Pointing
+// publicPath at IMG.LY's own CDN, hosting the identical version-pinned
+// files, sidesteps bundling them at all.
+const MODEL_PUBLIC_PATH = "https://staticimgly.com/@imgly/background-removal-data/1.4.5/dist/";
+
 export async function removeBackgroundToWhite(imageBuffer: Buffer): Promise<Buffer> {
   const blob = new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" });
-  const resultBlob = await removeBackground(blob);
+  const resultBlob = await removeBackground(blob, { publicPath: MODEL_PUBLIC_PATH });
   const transparentBuffer = Buffer.from(await resultBlob.arrayBuffer());
 
   const metadata = await sharp(transparentBuffer).metadata();
