@@ -1,7 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { removeBackgroundToWhite, cropTopOfPhoto } from "@/lib/photo-background";
 
 // .in("item_id", ids) puts every id straight into the request URL — past
 // ~200 items that blows the 16KB header limit and the query fails outright
@@ -78,6 +77,13 @@ export async function prepareListingPhotoUrls(
     if (error) return { ok: false, error: error.message };
     return { ok: true, urls: (data ?? []).map((p) => p.signedUrl).filter((u): u is string => Boolean(u)) };
   }
+
+  // Loaded only when actually needed — @imgly/background-removal-node pulls
+  // in a native onnxruntime binary that every OTHER route touching this file
+  // (warehouse/pending thumbnails, etc.) has no reason to pay the cost of
+  // (or risk failing on, since a top-level import here once took down every
+  // page that transitively imports item-photos.ts, not just this feature).
+  const { removeBackgroundToWhite, cropTopOfPhoto } = await import("@/lib/photo-background");
 
   const processedPaths: string[] = [];
   for (const row of photoRows) {
