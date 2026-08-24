@@ -320,12 +320,12 @@ function RemovePublicationForm({
 
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] px-2 py-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] px-2 py-1">
         <span className="text-xs text-[var(--color-text)]">
           ✅ {publication.accountName}
           {photoSetLabel ? ` · ${photoSetLabel}` : ""}
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <OlxStatusBadge publication={publication} />
           <AllegroStatusBadge publication={publication} />
           <CopyDraftButton
