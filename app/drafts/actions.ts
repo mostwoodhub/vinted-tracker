@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
-import { resolveListingPhotoRows } from "@/lib/item-photos";
+import { resolveListingPhotoRows, prepareListingPhotoUrls } from "@/lib/item-photos";
 import {
   getOlxToken,
   suggestOlxCategory,
@@ -181,6 +181,7 @@ export async function publishOlxAdvert(
   const listingId = String(formData.get("listingId") ?? "").trim();
   const itemId = String(formData.get("itemId") ?? "").trim();
   const photoSetId = String(formData.get("photoSetId") ?? "").trim();
+  const whiteBackground = formData.get("whiteBackground") === "true";
 
   if (!listingId) return { status: "error", error: "Brak identyfikatora ogłoszenia" };
   if (!itemId) return { status: "error", error: "Brak identyfikatora towaru" };
@@ -242,17 +243,9 @@ export async function publishOlxAdvert(
   // (multiple accounts/backgrounds), so trim instead of failing.
   const cappedPhotoRows = photoRows.slice(0, photosLimit.data);
 
-  // Signed just before the OLX call, not reused/cached — OLX fetches these
-  // URLs itself right after this request completes, so a short lifetime is
-  // fine and avoids ever making item photos public.
-  const { data: signedPhotos, error: signError } = await supabaseAdmin.storage
-    .from("item-photos")
-    .createSignedUrls(
-      cappedPhotoRows.map((p) => p.storage_path),
-      600
-    );
-  if (signError) return { status: "error", error: signError.message };
-  const imageUrls = (signedPhotos ?? []).map((p) => p.signedUrl).filter((u): u is string => Boolean(u));
+  const prepared = await prepareListingPhotoUrls(cappedPhotoRows, { whiteBackground });
+  if (!prepared.ok) return { status: "error", error: prepared.error };
+  const imageUrls = prepared.urls;
   if (imageUrls.length === 0) return { status: "error", error: "Nie udało się przygotować zdjęć dla OLX" };
 
   const attributes = buildOlxAttributes(categoryAttrs.data, {
@@ -359,6 +352,7 @@ export async function publishAllegroOffer(
   const listingId = String(formData.get("listingId") ?? "").trim();
   const itemId = String(formData.get("itemId") ?? "").trim();
   const photoSetId = String(formData.get("photoSetId") ?? "").trim();
+  const whiteBackground = formData.get("whiteBackground") === "true";
   const manualValuesRaw = String(formData.get("manualValues") ?? "{}");
   let manualValues: Record<string, string> = {};
   try {
@@ -427,17 +421,10 @@ export async function publishAllegroOffer(
   );
   if (!built.ok) return { status: "error", error: built.error };
 
-  // Signed just before the Allegro upload call, not reused/cached — same
-  // reasoning as publishOlxAdvert's imageUrls.
   const cappedPhotoRows = photoRows.slice(0, ALLEGRO_MAX_PHOTOS);
-  const { data: signedPhotos, error: signError } = await supabaseAdmin.storage
-    .from("item-photos")
-    .createSignedUrls(
-      cappedPhotoRows.map((p) => p.storage_path),
-      600
-    );
-  if (signError) return { status: "error", error: signError.message };
-  const sourceUrls = (signedPhotos ?? []).map((p) => p.signedUrl).filter((u): u is string => Boolean(u));
+  const prepared = await prepareListingPhotoUrls(cappedPhotoRows, { whiteBackground });
+  if (!prepared.ok) return { status: "error", error: prepared.error };
+  const sourceUrls = prepared.urls;
   if (sourceUrls.length === 0) return { status: "error", error: "Nie udało się przygotować zdjęć dla Allegro" };
 
   // Allegro doesn't accept an external URL directly in the offer — each

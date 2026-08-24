@@ -23,6 +23,7 @@ import {
   buttonPrimaryClass,
   buttonSecondaryClass,
   cardSmClass,
+  checkboxClass,
   errorTextClass,
   inputClass,
   mutedTextClass,
@@ -457,12 +458,14 @@ function PublishOlxApiForm({
 }) {
   const [state, dispatch, isPending] = useActionState(publishOlxAdvert, publishOlxInitialState);
   const [photoSetId, setPhotoSetId] = useState("");
+  const [whiteBackground, setWhiteBackground] = useState(false);
 
   function handlePublish() {
     const formData = new FormData();
     formData.set("itemId", itemId);
     formData.set("listingId", listingId);
     formData.set("photoSetId", photoSetId);
+    formData.set("whiteBackground", String(whiteBackground));
     dispatch(formData);
   }
 
@@ -483,6 +486,15 @@ function PublishOlxApiForm({
             ))}
           </select>
         )}
+        <label className="flex items-center gap-1 text-xs text-[var(--color-text)]">
+          <input
+            type="checkbox"
+            checked={whiteBackground}
+            onChange={(e) => setWhiteBackground(e.target.checked)}
+            className={checkboxClass}
+          />
+          Białe tło
+        </label>
         <button
           type="button"
           onClick={handlePublish}
@@ -520,6 +532,7 @@ function PublishAllegroApiForm({
 }) {
   const [state, dispatch, isPending] = useActionState(publishAllegroOffer, publishAllegroInitialState);
   const [photoSetId, setPhotoSetId] = useState("");
+  const [whiteBackground, setWhiteBackground] = useState(false);
   const [manualValues, setManualValues] = useState<Record<string, string>>({});
   const [optionsStatus, setOptionsStatus] = useState<"loading" | "loaded" | "error">("loading");
   const [manualParams, setManualParams] = useState<AllegroManualParam[]>([]);
@@ -549,6 +562,7 @@ function PublishAllegroApiForm({
     formData.set("itemId", itemId);
     formData.set("listingId", listingId);
     formData.set("photoSetId", photoSetId);
+    formData.set("whiteBackground", String(whiteBackground));
     formData.set("manualValues", JSON.stringify(manualValues));
     dispatch(formData);
   }
@@ -607,6 +621,15 @@ function PublishAllegroApiForm({
             ))}
           </select>
         )}
+        <label className="flex items-center gap-1 text-xs text-[var(--color-text)]">
+          <input
+            type="checkbox"
+            checked={whiteBackground}
+            onChange={(e) => setWhiteBackground(e.target.checked)}
+            className={checkboxClass}
+          />
+          Białe tło
+        </label>
         <button
           type="button"
           onClick={handlePublish}

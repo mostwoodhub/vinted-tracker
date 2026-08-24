@@ -1,5 +1,7 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { removeBackgroundToWhite } from "@/lib/photo-background";
 
 // .in("item_id", ids) puts every id straight into the request URL — past
 // ~200 items that blows the 16KB header limit and the query fails outright
@@ -50,6 +52,63 @@ export async function resolveListingPhotoRows(
   photoQuery = photoSetId ? photoQuery.eq("photo_set_id", photoSetId) : photoQuery.is("photo_set_id", null);
   const { data } = await photoQuery;
   return data ?? [];
+}
+
+// Signs the given photo rows for an external platform (OLX/Allegro) to
+// fetch, optionally running each one through background removal first —
+// see lib/photo-background.ts. Processed copies are written to a
+// "_processed/" prefix in the same bucket under a throwaway random name;
+// left in place rather than deleted right after signing, since OLX fetches
+// the URL asynchronously *after* our request returns (same reasoning as the
+// 600s TTL on the signed URL itself) — deleting immediately would race it.
+// Opt-in and low-volume enough that the modest storage left behind isn't a
+// real concern.
+export async function prepareListingPhotoUrls(
+  photoRows: { storage_path: string }[],
+  options: { whiteBackground: boolean }
+): Promise<{ ok: true; urls: string[] } | { ok: false; error: string }> {
+  if (!options.whiteBackground) {
+    const { data, error } = await supabaseAdmin.storage
+      .from("item-photos")
+      .createSignedUrls(
+        photoRows.map((p) => p.storage_path),
+        600
+      );
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, urls: (data ?? []).map((p) => p.signedUrl).filter((u): u is string => Boolean(u)) };
+  }
+
+  const processedPaths: string[] = [];
+  for (const row of photoRows) {
+    const { data: original, error: downloadError } = await supabaseAdmin.storage
+      .from("item-photos")
+      .download(row.storage_path);
+    if (downloadError || !original) {
+      return { ok: false, error: `Nie udało się pobrać zdjęcia do przetworzenia: ${row.storage_path}` };
+    }
+    const buffer = Buffer.from(await original.arrayBuffer());
+
+    let processed: Buffer;
+    try {
+      processed = await removeBackgroundToWhite(buffer);
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Nie udało się usunąć tła ze zdjęcia: ${err instanceof Error ? err.message : "nieznany błąd"}`,
+      };
+    }
+
+    const processedPath = `_processed/${randomUUID()}.jpg`;
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from("item-photos")
+      .upload(processedPath, processed, { contentType: "image/jpeg" });
+    if (uploadError) return { ok: false, error: uploadError.message };
+    processedPaths.push(processedPath);
+  }
+
+  const { data, error } = await supabaseAdmin.storage.from("item-photos").createSignedUrls(processedPaths, 600);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, urls: (data ?? []).map((p) => p.signedUrl).filter((u): u is string => Boolean(u)) };
 }
 
 // New photos append after whatever's already there (working and final
