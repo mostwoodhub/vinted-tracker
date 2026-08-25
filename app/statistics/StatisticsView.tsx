@@ -380,6 +380,41 @@ export function StatisticsView({
           <Tile label="Średnia marża" value={`${stats.averageMargin.toFixed(1)}%`} />
         </div>
 
+        <div className="flex flex-col gap-[var(--gap-default)]">
+          <h2 className="text-lg font-semibold text-[var(--color-text)]">
+            Cena wyjściowa vs cena sprzedaży
+          </h2>
+          <p className={`text-xs ${mutedTextClass}`}>
+            Tylko pojedyncze sprzedaże jednoznacznie dopasowane do towaru z
+            ceną wyjściową — orientacyjne, nie wszystkie sprzedaże da się tak
+            dopasować.
+          </p>
+          <div className="grid grid-cols-2 gap-[var(--space-md)] sm:grid-cols-4">
+            <Tile label="Dopasowanych sprzedaży" value={String(stats.discountStats.matchedCount)} />
+            <Tile
+              label="Pełna cena"
+              value={String(stats.discountStats.fullPriceCount)}
+              valueClass="text-[var(--color-success)]"
+            />
+            <Tile
+              label="Ze zniżką"
+              value={String(stats.discountStats.discountedCount)}
+              valueClass="text-[var(--color-warning)]"
+            />
+            <Tile
+              label="Średnia zniżka"
+              value={
+                stats.discountStats.discountedCount > 0
+                  ? `${stats.discountStats.averageDiscountPercent.toFixed(1)}% (${formatPln(
+                      stats.discountStats.averageDiscountAmount
+                    )})`
+                  : "—"
+              }
+              valueClass="text-[var(--color-warning)]"
+            />
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-[var(--space-md)] sm:grid-cols-4">
           <Tile
             label="Koszt własny"

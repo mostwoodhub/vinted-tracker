@@ -17,6 +17,7 @@ export type MatchableItem = {
   batchLabel: string | null;
   brand: string | null;
   size: string | null;
+  price?: number | null;
 };
 
 export function parseShoeId(
@@ -47,6 +48,59 @@ export function buildItemIndex(
     map.set(key, list);
   }
   return map;
+}
+
+export type SaleForPriceMatch = {
+  legacy_shoe_id: string | null;
+  sale_price: number | null;
+  items: { shoeId: string; price: number; cost: number; itemId?: string | null }[] | null;
+};
+
+export type SalePriceIndex = {
+  byItemId: Map<string, number>;
+  byLegacyNumber: Map<string, number>;
+};
+
+// Reverse of the usual direction: given items already fetched, look up what
+// each one actually sold for (vs items.price, the asking price at intake).
+// A multi-pair sale's own items[] carries a precise itemId when the
+// employee manually resolved which physical pair — used first when present.
+// Otherwise falls back to legacy_shoe_id, but only for single-pair sales,
+// and only when a legacy number shows up in exactly one sale — the same
+// old number can get reused for a different physical pair at a later
+// intake, so a number matching more than one sale is ambiguous and skipped
+// rather than guessed (see the R15615/R15706 correction this convention is
+// modeled on).
+export function buildSalePriceIndex(sales: SaleForPriceMatch[]): SalePriceIndex {
+  const byItemId = new Map<string, number>();
+  const candidatesByLegacyNumber = new Map<string, number[]>();
+
+  for (const sale of sales) {
+    if (sale.sale_price == null) continue;
+
+    const items = Array.isArray(sale.items) ? sale.items : null;
+    if (items && items.length > 0) {
+      for (const it of items) {
+        if (it.itemId && it.price != null) byItemId.set(it.itemId, it.price);
+      }
+      continue;
+    }
+
+    const ids = (sale.legacy_shoe_id ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (ids.length === 1) {
+      const id = ids[0];
+      const list = candidatesByLegacyNumber.get(id) ?? [];
+      list.push(sale.sale_price);
+      candidatesByLegacyNumber.set(id, list);
+    }
+  }
+
+  const byLegacyNumber = new Map<string, number>();
+  for (const [id, prices] of candidatesByLegacyNumber) {
+    if (prices.length === 1) byLegacyNumber.set(id, prices[0]);
+  }
+
+  return { byItemId, byLegacyNumber };
 }
 
 export function matchItemForShoeId(

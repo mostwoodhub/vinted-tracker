@@ -24,7 +24,7 @@ export default async function StatisticsPage() {
 
   // Independent of each other — fire together instead of waiting on each
   // one's round trip before starting the next.
-  const [sales, expenses, { data: profiles }, { data: realBatches }, { data: itemRows }, statusLogRows] =
+  const [sales, expenses, { data: profiles }, { data: realBatches }, itemRows, statusLogRows] =
     await Promise.all([
       fetchAllRows<SaleRow>((from, to) =>
         supabaseAdmin
@@ -47,10 +47,25 @@ export default async function StatisticsPage() {
       // Includes deleted items too — matching is about historical linkage
       // for reporting, not current warehouse state. id/created_at/deleted_at
       // are used below to compute time-to-sell and filter return events to
-      // still-active items only.
-      supabaseAdmin
-        .from("items")
-        .select("id, internal_number, legacy_number, brand, size, created_at, deleted_at, batches(label)"),
+      // still-active items only. Paginated: a plain .select() silently caps
+      // at PostgREST's 1000-row default, and this table is already close to
+      // that line.
+      fetchAllRows<{
+        id: string;
+        internal_number: number;
+        legacy_number: string | null;
+        brand: string | null;
+        size: string | null;
+        price: number | null;
+        created_at: string | null;
+        deleted_at: string | null;
+        batches: { label: string | null } | { label: string | null }[] | null;
+      }>((from, to) =>
+        supabaseAdmin
+          .from("items")
+          .select("id, internal_number, legacy_number, brand, size, price, created_at, deleted_at, batches(label)")
+          .range(from, to)
+      ),
       // "sold"/"returned" transitions, each logged exactly once per item at
       // the moment it happened (see item-sale-link.ts and
       // items/[id]/actions.ts) — the reliable source for "how long did this
@@ -102,6 +117,7 @@ export default async function StatisticsPage() {
       batchLabel,
       brand: row.brand,
       size: row.size,
+      price: row.price,
     };
   });
 

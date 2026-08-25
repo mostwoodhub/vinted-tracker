@@ -132,6 +132,55 @@ export function buildDailySeries(sales: SaleRow[]): DailyPoint[] {
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+export type DiscountStats = {
+  matchedCount: number;
+  fullPriceCount: number;
+  discountedCount: number;
+  averageDiscountPercent: number;
+  averageDiscountAmount: number;
+};
+
+// Compares each sale's actual price against the item's asking price at
+// intake — only for single-pair sales matched to exactly one item with a
+// price, same forgiving/skip-if-ambiguous approach as the rest of this file.
+// Multi-pair sales are skipped: a single asking price can't be meaningfully
+// compared against a price covering more than one pair.
+export function computeDiscountStats(sales: SaleRow[], items: MatchableItem[]): DiscountStats {
+  const index = buildItemIndex(items);
+  let matchedCount = 0;
+  let fullPriceCount = 0;
+  let discountedCount = 0;
+  let discountPercentSum = 0;
+  let discountAmountSum = 0;
+
+  for (const sale of sales) {
+    if ((sale.quantity ?? 1) > 1) continue;
+    if (Array.isArray(sale.items) && sale.items.length > 1) continue;
+    if (sale.sale_price == null) continue;
+
+    const item = matchItemForShoeId(sale.legacy_shoe_id, index);
+    if (!item || item.price == null || item.price <= 0) continue;
+
+    matchedCount++;
+    const diff = item.price - sale.sale_price;
+    if (diff <= 0) {
+      fullPriceCount++;
+    } else {
+      discountedCount++;
+      discountAmountSum += diff;
+      discountPercentSum += (diff / item.price) * 100;
+    }
+  }
+
+  return {
+    matchedCount,
+    fullPriceCount,
+    discountedCount,
+    averageDiscountPercent: discountedCount > 0 ? discountPercentSum / discountedCount : 0,
+    averageDiscountAmount: discountedCount > 0 ? discountAmountSum / discountedCount : 0,
+  };
+}
+
 export type SalesStatistics = {
   count: number;
   totalRevenue: number;
@@ -156,6 +205,7 @@ export type SalesStatistics = {
   bySize: Breakdown[];
   byBatch: Breakdown[];
   profitPerPair: ProfitPerPairBucket[];
+  discountStats: DiscountStats;
 };
 
 export function computeSalesStatistics(
@@ -226,6 +276,7 @@ export function computeSalesStatistics(
   const bySize = buildItemLinkedBreakdown(sales, items, (item) => item.size ?? "—");
   const byBatch = buildItemLinkedBreakdown(sales, items, (item) => item.batchLabel ?? "—");
   const profitPerPair = buildProfitPerPairDistribution(sales);
+  const discountStats = computeDiscountStats(sales, items);
 
   return {
     count,
@@ -251,5 +302,6 @@ export function computeSalesStatistics(
     bySize,
     byBatch,
     profitPerPair,
+    discountStats,
   };
 }

@@ -19,7 +19,7 @@ import {
   bulkUpdatePrice,
   type UpdateCostState,
 } from "./actions";
-import { inputClass } from "@/lib/ui-classes";
+import { inputClass, mutedTextClass } from "@/lib/ui-classes";
 
 export type WarehouseCardItem = {
   id: string;
@@ -36,6 +36,11 @@ export type WarehouseCardItem = {
   batches: { id: string; label: string | null } | null;
   hasPhoto: boolean;
   daysInStatus?: number | null;
+  // Actual sale price, matched via lib/item-sale-match — only present when
+  // it could be resolved unambiguously (see buildSalePriceIndex). Differs
+  // from `price` (the asking price at intake) whenever it sold for a
+  // discount, or above asking.
+  salePrice?: number | null;
 };
 
 const READY_STATUSES = ["ready_to_publish", "published", "sold"];
@@ -981,6 +986,17 @@ export function WarehouseCards({
                 >
                   {item.price != null ? `${item.price} zł` : "—"}
                 </p>
+                {item.status === "sold" && item.salePrice != null && (
+                  <p className={`text-xs ${mutedTextClass}`}>
+                    Sprzedano za {item.salePrice} zł
+                    {item.price != null && item.salePrice < item.price && (
+                      <span className="text-[var(--color-warning)]">
+                        {" "}
+                        (-{(item.price - item.salePrice).toFixed(2)} zł)
+                      </span>
+                    )}
+                  </p>
+                )}
 
                 {isAdmin && (
                   <ItemDeleteButton

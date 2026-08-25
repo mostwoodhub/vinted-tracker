@@ -7,6 +7,8 @@ import {
   PROCESSING_STATUSES,
 } from "@/lib/item-aging";
 import { loadPhotoAvailability } from "@/lib/item-photos";
+import { buildSalePriceIndex, type SaleForPriceMatch } from "@/lib/item-sale-match";
+import { fetchAllRows } from "@/lib/fetch-all";
 import { WarehouseCards, type WarehouseCardItem } from "./WarehouseCards";
 
 export default async function WarehousePage() {
@@ -16,7 +18,7 @@ export default async function WarehousePage() {
   const isAdmin = roles.has("admin");
 
   // Independent of each other — fire together instead of one after another.
-  const [{ data: items }, { data: batchRows }] = await Promise.all([
+  const [{ data: items }, { data: batchRows }, saleRows] = await Promise.all([
     supabaseAdmin
       .from("items")
       .select(
@@ -28,9 +30,23 @@ export default async function WarehousePage() {
     // (most items aren't linked to a batch yet) — otherwise the Partia
     // filter has nothing to show.
     supabaseAdmin.from("batches").select("label").order("label", { ascending: true }),
+    // For the "actual sale price" shown on sold items below — asking price
+    // (items.price) and what it actually sold for often differ. Paginated:
+    // a plain .select() silently caps at PostgREST's 1000-row default,
+    // which for this table (thousands of rows) means recent sales just
+    // vanish from the match with no error.
+    fetchAllRows<SaleForPriceMatch>((from, to) =>
+      supabaseAdmin
+        .from("sales")
+        .select("legacy_shoe_id, sale_price, items")
+        .is("deleted_at", null)
+        .not("sale_price", "is", null)
+        .range(from, to)
+    ),
   ]);
 
   const rows = (items ?? []) as unknown as Omit<WarehouseCardItem, "hasPhoto">[];
+  const salePriceIndex = buildSalePriceIndex(saleRows);
   const ids = rows.map((row) => row.id);
   const allBatchLabels = (batchRows ?? [])
     .map((b) => b.label)
@@ -57,10 +73,16 @@ export default async function WarehousePage() {
         ? daysSince(lastActivity, now)
         : null;
 
+    const salePrice =
+      salePriceIndex.byItemId.get(row.id) ??
+      (row.legacy_number ? salePriceIndex.byLegacyNumber.get(row.legacy_number) : undefined) ??
+      null;
+
     return {
       ...row,
       hasPhoto: photoAvailability.has(row.id),
       daysInStatus,
+      salePrice,
     };
   });
 
