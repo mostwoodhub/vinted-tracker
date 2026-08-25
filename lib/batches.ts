@@ -25,13 +25,28 @@ export async function getNextBatchNumber(): Promise<number> {
   return (maxRow?.batch_number ?? 0) + 1;
 }
 
+// Reduces whatever was typed/derived down to just its leading letters before
+// it's ever used to look up or create a batch — a "Partia" field mistake
+// (someone pastes a full item number like "R15583" instead of just "R")
+// used to create a brand new batch named after the whole typo. This is the
+// one choke point every caller goes through (manual entry and the
+// legacy-number-derived fallback alike), so that can't happen again no
+// matter what the raw input was. A value with no leading letters at all
+// (e.g. a pasted pure-digit number) has nothing to derive a batch from and
+// resolves to no batch — same as leaving the field blank.
+function normalizeBatchLabel(label: string): string | null {
+  const match = label.trim().match(/^([A-Za-z]+)/);
+  return match ? match[1] : null;
+}
+
 export async function resolveBatchId(label: string): Promise<string | null> {
-  if (!label) return null;
+  const normalized = normalizeBatchLabel(label);
+  if (!normalized) return null;
 
   const { data: existing } = await supabaseAdmin
     .from("batches")
     .select("id")
-    .eq("label", label)
+    .eq("label", normalized)
     .maybeSingle();
 
   if (existing) return existing.id;
@@ -40,7 +55,7 @@ export async function resolveBatchId(label: string): Promise<string | null> {
 
   const { data: created, error } = await supabaseAdmin
     .from("batches")
-    .insert({ label, batch_number: nextBatchNumber })
+    .insert({ label: normalized, batch_number: nextBatchNumber })
     .select("id")
     .single();
 
