@@ -160,6 +160,52 @@ function CopyDraftButton({
   );
 }
 
+// For the Vinted automation Shortcut — Vinted has no API, so a native macOS
+// file dialog has to pick up the photos from disk. Downloading them as
+// 1.jpg, 2.jpg... into a dedicated, always-freshly-emptied folder means the
+// Shortcut can just "select all" there without needing to know exact
+// filenames or item numbers. Sequential rather than parallel, with a short
+// gap between each — Safari's own popup-blocker-style guard against
+// several downloads firing from one click can otherwise silently drop all
+// but the first.
+function DownloadAllPhotosButton({ photos }: { photos: { id: string; url: string }[] }) {
+  const [pending, setPending] = useState(false);
+
+  async function handleClick() {
+    setPending(true);
+    try {
+      for (let i = 0; i < photos.length; i++) {
+        const response = await fetch(photos[i].url);
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = `${i + 1}.jpg`;
+        link.click();
+        URL.revokeObjectURL(objectUrl);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    } catch {
+      alert("Nie udało się pobrać zdjęć.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (photos.length === 0) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={pending}
+      className="rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-xs font-medium text-[var(--color-text)] transition-opacity hover:opacity-80 disabled:opacity-60"
+    >
+      {pending ? "Pobieranie…" : `⬇️ Pobierz zdjęcia do Vinted (${photos.length})`}
+    </button>
+  );
+}
+
 // Raw OLX status codes shown as short Polish labels instead of the API's
 // own English/technical wording.
 const OLX_STATUS_LABELS: Record<string, string> = {
@@ -828,12 +874,15 @@ export function ListingsEditor({
   accountNames = [],
   photoSets = [],
   finalPhotoIds = [],
+  finalPhotoUrls = [],
 }: {
   item: ListingsItem;
   accountNames?: string[];
   photoSets?: PhotoSetOption[];
   finalPhotoIds?: string[];
+  finalPhotoUrls?: { id: string; url: string }[];
 }) {
+  const photoUrlById = new Map(finalPhotoUrls.map((p) => [p.id, p.url]));
   const [saveState, saveAction] = useActionState(
     saveDraftChanges,
     saveInitialState
@@ -975,6 +1024,13 @@ export function ListingsEditor({
                     setPhotoOrder((prev) => ({ ...prev, [platform]: next }))
                   }
                 />
+                {platform === "vinted" && (
+                  <DownloadAllPhotosButton
+                    photos={(photoOrder[platform]?.length ? photoOrder[platform] : finalPhotoIds)
+                      .map((id) => ({ id, url: photoUrlById.get(id) ?? "" }))
+                      .filter((p) => p.url)}
+                  />
+                )}
               </div>
             );
           })}

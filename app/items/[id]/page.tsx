@@ -327,6 +327,9 @@ export default async function ItemPage({
               accountNames={accountNames}
               photoSets={photoSets.map((s) => ({ id: s.id, label: s.label }))}
               finalPhotoIds={finalPhotos.map((p) => p.id)}
+              finalPhotoUrls={finalPhotos
+                .map((p) => ({ id: p.id, url: signedUrlByPath.get(p.storage_path) ?? "" }))
+                .filter((p) => p.url)}
             />
           </div>
         )}
