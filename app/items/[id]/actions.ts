@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
-import { resolveBatchId, deriveBatchLabelFromLegacyNumber } from "@/lib/batches";
+import { resolveBatchId, deriveBatchLabelFromLegacyNumber, normalizeBatchLabel } from "@/lib/batches";
+import { suggestCostPrice } from "@/lib/batch-cost-rules";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
 import { getNextPhotoSortOrder } from "@/lib/item-photos";
 import { generateAiCard } from "./ai-card";
@@ -226,6 +227,19 @@ export async function updateItem(
   try {
     const batchId = await resolveBatchId(batchLabel);
 
+    // Known-batch cost policy (see lib/batch-cost-rules.ts) — only fills a
+    // still-blank cost_price, never overwrites one someone already entered
+    // via CostEditor or at intake.
+    const { data: existingItem } = await supabaseAdmin
+      .from("items")
+      .select("cost_price")
+      .eq("id", itemId)
+      .maybeSingle();
+    const costPriceUpdate =
+      existingItem && !existingItem.cost_price
+        ? { cost_price: suggestCostPrice(normalizeBatchLabel(batchLabel), price) }
+        : {};
+
     const { error } = await supabaseAdmin
       .from("items")
       .update({
@@ -238,6 +252,7 @@ export async function updateItem(
         condition_detail: conditionDetail,
         defects,
         price,
+        ...costPriceUpdate,
       })
       .eq("id", itemId);
 

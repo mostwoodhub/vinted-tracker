@@ -94,6 +94,11 @@ export type BatchPayback = {
   revenue: number;
   remaining: number;
   breakEvenReached: boolean;
+  // True when this batch exists (an item was intaken under it) but nobody
+  // has entered its purchase cost yet — the exact way batch "P" went
+  // unnoticed for months, since `cost` alone reads as "0 zł spent" rather
+  // than "unknown". Surfaced separately so the UI can say so explicitly.
+  costMissing: boolean;
 };
 
 // All-time cost-recovery view combining both batch sources into one row per
@@ -112,10 +117,13 @@ export function computeBatchPayback(
   }
 
   const baselineSalesByLabel = new Map<string, number>();
+  const costMissingLabels = new Set<string>();
   for (const b of realBatches) {
     if (!b.label) continue;
     costByLabel.set(b.label, b.purchase_cost ?? 0);
     baselineSalesByLabel.set(b.label, b.sales_amount ?? 0);
+    if (b.purchase_cost == null) costMissingLabels.add(b.label);
+    else costMissingLabels.delete(b.label);
   }
 
   return Array.from(costByLabel.entries())
@@ -129,6 +137,7 @@ export function computeBatchPayback(
         revenue,
         remaining: Math.abs(remaining),
         breakEvenReached: remaining <= 0,
+        costMissing: costMissingLabels.has(label),
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));

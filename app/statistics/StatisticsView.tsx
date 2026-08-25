@@ -263,7 +263,11 @@ function BatchPaybackTable({ rows }: { rows: BatchPayback[] }) {
                   {row.label}
                 </td>
                 <td className="px-4 py-3 text-[var(--color-warning)]">
-                  {formatPln(row.cost)}
+                  {row.costMissing ? (
+                    <span className="text-[var(--color-danger)]">⚠ Brak kosztu zakupu</span>
+                  ) : (
+                    formatPln(row.cost)
+                  )}
                 </td>
                 <td className="px-4 py-3 text-[var(--color-text)]">
                   {formatPln(row.revenue)}

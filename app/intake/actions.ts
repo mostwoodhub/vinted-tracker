@@ -4,7 +4,8 @@ import { randomUUID } from "crypto";
 import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
-import { resolveBatchId, deriveBatchLabelFromLegacyNumber } from "@/lib/batches";
+import { resolveBatchId, deriveBatchLabelFromLegacyNumber, normalizeBatchLabel } from "@/lib/batches";
+import { suggestCostPrice } from "@/lib/batch-cost-rules";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
 import { formatItemNumber } from "@/lib/item-number";
 import { generateIntakeEstimate } from "@/lib/ai-price-estimate";
@@ -151,6 +152,13 @@ export async function createItem(
     batchLabel = deriveBatchLabelFromLegacyNumber(legacyNumber) ?? "";
   }
 
+  // Known-batch cost policy (see lib/batch-cost-rules.ts) — filled in
+  // automatically whenever both the batch and price are known, so it
+  // doesn't need a separate CostEditor visit right after. A batch with no
+  // rule yet (a genuinely new purchase) just leaves this null, same as
+  // before.
+  const costPrice = suggestCostPrice(normalizeBatchLabel(batchLabel), price);
+
   try {
     const batchId = await resolveBatchId(batchLabel);
 
@@ -197,6 +205,7 @@ export async function createItem(
         condition_detail: conditionDetail,
         defects,
         price,
+        cost_price: costPrice,
         note: note || null,
         legacy_number: legacyNumber || null,
         created_by: access.employee.id,
