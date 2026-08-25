@@ -13,6 +13,7 @@ import { parseShoeId } from "@/lib/item-sale-match";
 import { CONDITIONS, CONDITION_DETAIL_OPTIONS } from "@/lib/condition-options";
 import {
   buttonPrimaryClass,
+  buttonSuccessClass,
   cardSmClass,
   checkboxClass,
   errorTextClass,
@@ -156,7 +157,6 @@ export function IntakeForm({
 }: IntakeFormProps) {
   const [state, formAction] = useActionState(createItem, initialState);
   const formRef = useRef<HTMLFormElement>(null);
-  const confirmDuplicateRef = useRef<HTMLInputElement>(null);
   const photosInputRef = useRef<HTMLInputElement>(null);
   const [compressingPhotos, setCompressingPhotos] = useState(false);
   const [condition, setCondition] = useState("");
@@ -220,9 +220,16 @@ export function IntakeForm({
     return () => clearTimeout(timer);
   }, [legacyNumber]);
 
+  // Dispatches the action's FormData directly rather than mutating the
+  // hidden field and calling requestSubmit() — some mobile Safari versions
+  // silently no-op a JS-triggered requestSubmit(), which made this button
+  // look like it did nothing. formAction (from useActionState) accepts a
+  // FormData directly, so this sidesteps native form submission entirely.
   function handleAddAnyway() {
-    if (confirmDuplicateRef.current) confirmDuplicateRef.current.value = "true";
-    formRef.current?.requestSubmit();
+    if (!formRef.current) return;
+    const formData = new FormData(formRef.current);
+    formData.set("confirmDuplicate", "true");
+    formAction(formData);
   }
 
   // Phone-camera photos (5-12MB each, no resizing anywhere else in the
@@ -279,7 +286,6 @@ export function IntakeForm({
 
       <form ref={formRef} action={formAction} className="flex flex-col gap-5">
         <input
-          ref={confirmDuplicateRef}
           type="hidden"
           name="confirmDuplicate"
           defaultValue="false"
@@ -560,11 +566,7 @@ export function IntakeForm({
         {state.status === "duplicate" && (
           <div className={noticeWarningClass}>
             <p>⚠️ {state.error}</p>
-            <button
-              type="button"
-              onClick={handleAddAnyway}
-              className="w-fit rounded-full bg-[var(--color-warning-bg)] px-4 py-2 text-sm font-medium text-[var(--color-warning)] transition-opacity hover:opacity-80"
-            >
+            <button type="button" onClick={handleAddAnyway} className={`w-fit ${buttonSuccessClass}`}>
               Dodaj mimo to
             </button>
           </div>
