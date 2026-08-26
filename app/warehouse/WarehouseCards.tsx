@@ -879,6 +879,22 @@ export function WarehouseCards({
         />
       )}
 
+      {isAdmin && sorted.length > 0 && (
+        <label className="flex w-fit items-center gap-2 text-sm text-[var(--color-text-muted)]">
+          <input
+            type="checkbox"
+            checked={sorted.every((item) => selectedItems.has(item.id))}
+            onChange={(e) => {
+              setSelectedItems(
+                e.target.checked ? new Set(sorted.map((item) => item.id)) : new Set()
+              );
+            }}
+            className="h-4 w-4 shrink-0"
+          />
+          Zaznacz wszystkie ({sorted.length})
+        </label>
+      )}
+
       <div className="flex flex-col gap-[var(--gap-default)]">
         {sorted.map((item) => {
           const meta = statusMeta(item.status);
