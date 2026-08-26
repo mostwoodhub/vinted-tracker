@@ -25,53 +25,60 @@ export function StatusTrack({ status }: { status: string }) {
   }
 
   return (
-    <ol className="flex items-center">
-      {STEPS.map((step, index) => {
-        const isCurrent = index === currentIndex;
-        const isDone = currentIndex >= 0 && index < currentIndex;
+    // Fixed-size circles + whitespace-nowrap labels don't compress enough
+    // to fit 6 steps on a narrow phone screen — they used to render right
+    // up against (and functionally past) the page's own edge padding.
+    // Scrollable with a real min-width instead, so every label stays fully
+    // legible and reachable by swiping rather than getting crowded out.
+    <div className="overflow-x-auto">
+      <ol className="flex min-w-[420px] items-center pr-2">
+        {STEPS.map((step, index) => {
+          const isCurrent = index === currentIndex;
+          const isDone = currentIndex >= 0 && index < currentIndex;
 
-        return (
-          <li
-            key={step.key}
-            className="flex flex-1 items-center last:flex-none"
-          >
-            <div className="flex flex-col items-center gap-1.5">
-              <div
-                className={
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium " +
-                  (isCurrent
-                    ? "bg-[var(--color-accent)] text-white"
-                    : isDone
-                      ? "bg-[var(--color-success)] text-white"
-                      : "bg-[var(--color-surface)] text-[var(--color-text-muted)]")
-                }
-              >
-                {isDone ? "✓" : index + 1}
+          return (
+            <li
+              key={step.key}
+              className="flex flex-1 items-center last:flex-none"
+            >
+              <div className="flex flex-col items-center gap-1.5">
+                <div
+                  className={
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium " +
+                    (isCurrent
+                      ? "bg-[var(--color-accent)] text-white"
+                      : isDone
+                        ? "bg-[var(--color-success)] text-white"
+                        : "bg-[var(--color-surface)] text-[var(--color-text-muted)]")
+                  }
+                >
+                  {isDone ? "✓" : index + 1}
+                </div>
+                <span
+                  className={
+                    "whitespace-nowrap text-xs " +
+                    (isCurrent
+                      ? "font-medium text-[var(--color-text)]"
+                      : "text-[var(--color-text-muted)]")
+                  }
+                >
+                  {step.label}
+                </span>
               </div>
-              <span
-                className={
-                  "whitespace-nowrap text-xs " +
-                  (isCurrent
-                    ? "font-medium text-[var(--color-text)]"
-                    : "text-[var(--color-text-muted)]")
-                }
-              >
-                {step.label}
-              </span>
-            </div>
-            {index < STEPS.length - 1 && (
-              <div
-                className={
-                  "mx-2 h-px flex-1 " +
-                  (isDone
-                    ? "bg-[var(--color-success)]"
-                    : "bg-[var(--color-surface)]")
-                }
-              />
-            )}
-          </li>
-        );
-      })}
-    </ol>
+              {index < STEPS.length - 1 && (
+                <div
+                  className={
+                    "mx-2 h-px flex-1 " +
+                    (isDone
+                      ? "bg-[var(--color-success)]"
+                      : "bg-[var(--color-surface)]")
+                  }
+                />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
