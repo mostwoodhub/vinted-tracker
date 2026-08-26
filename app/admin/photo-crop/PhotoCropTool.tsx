@@ -3,12 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   buttonPrimaryClass,
-  buttonSecondaryClass,
   cardClass,
   errorTextClass,
   inputClass,
   labelClass,
-  mutedTextClass,
 } from "@/lib/ui-classes";
 
 const MAX_CROP_PERCENT = 45;
@@ -41,7 +39,6 @@ async function cropImageFile(file: File, cropPercent: number): Promise<Blob> {
 }
 
 export function PhotoCropTool() {
-  const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [cropPercent, setCropPercent] = useState(5);
   const [pending, setPending] = useState(false);
@@ -85,36 +82,8 @@ export function PhotoCropTool() {
     }
   }
 
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)} className={buttonSecondaryClass}>
-        📐 Przytnij zdjęcia
-      </button>
-    );
-  }
-
   return (
     <div className={`flex flex-col gap-4 ${cardClass}`}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="font-bold text-[var(--color-text)]">📐 Przytnij zdjęcia</span>
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(false);
-            setFiles([]);
-            setError(null);
-          }}
-          className={buttonSecondaryClass}
-        >
-          Zamknij
-        </button>
-      </div>
-      <p className={`text-sm ${mutedTextClass}`}>
-        Wgraj kilkanaście zdjęć, ustaw o ile procent przyciąć każdą krawędź, a
-        potem zapisz wszystkie od razu — obrobione pliki trafiają na twój
-        komputer (nie do systemu).
-      </p>
-
       <label className="flex flex-col gap-1.5">
         <span className={labelClass}>Zdjęcia</span>
         <input
