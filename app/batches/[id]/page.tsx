@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { formatItemNumber } from "@/lib/item-number";
+import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { BatchCostForm } from "./BatchCostForm";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
@@ -11,6 +12,16 @@ export default async function BatchPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  // The only in-app link here (redirected to after creating a batch from
+  // /batches-archive) is already admin-only, but the route itself had no
+  // check of its own — purchase cost and per-item cost prices were reachable
+  // by any logged-in employee who typed the URL directly.
+  const employee = await getCurrentEmployee();
+  const roles = getEffectiveRoles(employee);
+  if (!roles.has("admin")) {
+    redirect("/warehouse");
+  }
 
   // Both only need `id`, not each other's result — fire together.
   const [{ data: batch }, { data: items }] = await Promise.all([

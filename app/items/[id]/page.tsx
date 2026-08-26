@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { formatItemNumber } from "@/lib/item-number";
-import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
+import { getCurrentEmployee, getEffectiveRoles, isIntakeOnly } from "@/lib/auth";
 import { StatusTrack } from "./StatusTrack";
 import { FinalPhotosUpload } from "./FinalPhotosUpload";
 import { WorkingPhotosUpload } from "./WorkingPhotosUpload";
@@ -94,6 +94,12 @@ export default async function ItemPage({
 
   const roles = getEffectiveRoles(employee);
   const canEdit = roles.has("admin") || roles.has("publisher");
+  // Intake-only staff can land here via the duplicate-number-check thumbnail
+  // link in the intake form — a legitimate reason to see this page — but
+  // /warehouse and /pending both deliberately hide price from them (see
+  // isIntakeOnly's comment in lib/auth.ts), so this page shouldn't leak it
+  // either just because it's reached by a different path.
+  const hidePriceInfo = isIntakeOnly(roles);
 
   const photoRows = (photos ?? []) as ItemPhotoWithSet[];
 
@@ -195,7 +201,7 @@ export default async function ItemPage({
                 <li key={sale.id}>
                   {sale.sale_date ?? "—"}
                   {sale.platform ? ` · ${sale.platform}` : ""}
-                  {sale.sale_price != null ? ` · ${formatPln(sale.sale_price)}` : ""}
+                  {!hidePriceInfo && sale.sale_price != null ? ` · ${formatPln(sale.sale_price)}` : ""}
                 </li>
               ))}
             </ul>
@@ -249,11 +255,13 @@ export default async function ItemPage({
             label="Wady"
             value={item.defects?.length ? item.defects.join(", ") : "Brak"}
           />
-          <Field
-            label="Cena"
-            value={item.price != null ? `${item.price} zł` : "—"}
-          />
-          {item.ai_suggested_price != null && (
+          {!hidePriceInfo && (
+            <Field
+              label="Cena"
+              value={item.price != null ? `${item.price} zł` : "—"}
+            />
+          )}
+          {!hidePriceInfo && item.ai_suggested_price != null && (
             <Field
               label="Sugerowana cena AI"
               value={
@@ -317,7 +325,7 @@ export default async function ItemPage({
           />
         </div>
 
-        {showListingsEditor && (
+        {showListingsEditor && !hidePriceInfo && (
           <div className="flex flex-col gap-3">
             <h2 className="text-lg font-semibold text-[var(--color-text)]">
               Szkice ogłoszeń AI

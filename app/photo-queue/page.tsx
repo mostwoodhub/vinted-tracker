@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { formatItemNumber } from "@/lib/item-number";
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { warsawDateString } from "@/lib/warsaw-time";
 import { IdleReminder } from "@/app/IdleReminder";
 import { IntakeStatsSection, type IntakeItem } from "@/app/dashboard/IntakeStatsSection";
@@ -25,6 +26,15 @@ async function fetchOwnPhotoLog(employeeId: string): Promise<IntakeItem[]> {
 
 export default async function PhotoQueuePage() {
   const employee = await getCurrentEmployee();
+  const roles = getEffectiveRoles(employee);
+
+  // Nav only links here for admin/photographer (see layout.tsx's
+  // magazynLinks) — this page had no route-level check at all before, so
+  // anyone else could still reach it directly by URL.
+  if (!roles.has("admin") && !roles.has("photographer")) {
+    redirect("/warehouse");
+  }
+
   const todayWarsaw = warsawDateString(new Date());
 
   const [{ data: items }, ownPhotos] = await Promise.all([
