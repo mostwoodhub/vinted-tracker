@@ -114,10 +114,25 @@ export default async function DashboardPage() {
     { data: photoLog },
     statusLog,
   ] = await Promise.all([
-      supabaseAdmin
-        .from("items")
-        .select("id, status, price, cost_price, batch_id, created_by, created_at")
-        .is("deleted_at", null),
+      // Paginated: a plain .select() silently caps at PostgREST's 1000-row
+      // default, and this table has since crossed that line — without this,
+      // the newest items fall off the page and never reach the "W
+      // magazynie" counts or the "Prognozowany przychód" totals below.
+      fetchAllRows<{
+        id: string;
+        status: string;
+        price: number | null;
+        cost_price: number | null;
+        batch_id: string | null;
+        created_by: string | null;
+        created_at: string | null;
+      }>((from, to) =>
+        supabaseAdmin
+          .from("items")
+          .select("id, status, price, cost_price, batch_id, created_by, created_at")
+          .is("deleted_at", null)
+          .range(from, to)
+      ).then((data) => ({ data })),
       supabaseAdmin
         .from("batches")
         .select("id, label, batch_number, purchase_cost, quantity, sales_amount, sold_pairs")
