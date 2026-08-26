@@ -4,6 +4,8 @@ import { ALL_ROLES, getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { RoleToggle } from "./RoleToggle";
 import { CreateEmployeeForm } from "./CreateEmployeeForm";
 import { EditEmployeeForm } from "./EditEmployeeForm";
+import { PrimaryRoleForm } from "./PrimaryRoleForm";
+import { EmployeeActiveToggle } from "./EmployeeActiveToggle";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
 
 type EmployeeRow = {
@@ -36,6 +38,9 @@ export default async function EmployeesPage() {
   const emailByAuthUserId = new Map(
     (authUsers?.users ?? []).map((u) => [u.id, u.email ?? null])
   );
+  const bannedUntilByAuthUserId = new Map(
+    (authUsers?.users ?? []).map((u) => [u.id, u.banned_until ?? null])
+  );
 
   return (
     <div className={pageWrapClass}>
@@ -54,16 +59,40 @@ export default async function EmployeesPage() {
             const toggleableRoles = ALL_ROLES.filter(
               (role) => role !== employee.role
             );
+            const bannedUntil = employee.auth_user_id
+              ? bannedUntilByAuthUserId.get(employee.auth_user_id)
+              : null;
+            const isActive = !bannedUntil || new Date(bannedUntil) <= new Date();
+            const isSelf = employee.id === currentEmployee?.id;
 
             return (
               <div key={employee.id} className={`flex flex-col gap-3 ${cardClass}`}>
-                <div>
-                  <p className="font-medium text-[var(--color-text)]">
-                    {employee.full_name}
-                  </p>
-                  <p className={`text-xs ${mutedTextClass}`}>
-                    Rola podstawowa: {employee.role}
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-[var(--color-text)]">
+                      {employee.full_name}
+                      {!isActive && (
+                        <span className="ml-2 rounded-full bg-[var(--color-danger-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-danger)]">
+                          Zablokowany
+                        </span>
+                      )}
+                    </p>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className={mutedTextClass}>Rola podstawowa:</span>
+                      <PrimaryRoleForm
+                        employeeId={employee.id}
+                        role={employee.role}
+                        allRoles={ALL_ROLES}
+                      />
+                    </div>
+                  </div>
+                  {employee.auth_user_id && (
+                    <EmployeeActiveToggle
+                      employeeId={employee.id}
+                      isActive={isActive}
+                      isSelf={isSelf}
+                    />
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1">

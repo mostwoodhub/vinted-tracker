@@ -164,3 +164,96 @@ export async function createEmployee(
 
   return { status: "success", fullName, email, password };
 }
+
+export type UpdatePrimaryRoleState = {
+  status: "idle" | "success" | "error";
+  error?: string;
+};
+
+// There was previously no way to change someone's primary role after
+// creation at all — only extra_roles could be toggled, so a genuine job
+// change meant the "podstawowa rola" label just went stale forever.
+export async function updatePrimaryRole(
+  _prevState: UpdatePrimaryRoleState,
+  formData: FormData
+): Promise<UpdatePrimaryRoleState> {
+  const access = await checkRole("admin");
+  if (!access.ok) return { status: "error", error: access.error };
+
+  const employeeId = String(formData.get("employeeId") ?? "").trim();
+  const role = String(formData.get("role") ?? "").trim();
+
+  if (!employeeId) return { status: "error", error: "Nieprawidłowe dane" };
+  if (!ALL_ROLES.includes(role as (typeof ALL_ROLES)[number])) {
+    return { status: "error", error: "Wybierz rolę" };
+  }
+
+  const { data: employee, error: fetchError } = await supabaseAdmin
+    .from("employees")
+    .select("extra_roles")
+    .eq("id", employeeId)
+    .single();
+  if (fetchError) return { status: "error", error: fetchError.message };
+
+  // The primary role is never also listed as an extra one (see
+  // toggleableRoles in page.tsx) — drop it from extra_roles if it was
+  // there from before this change, so it doesn't linger as a redundant
+  // duplicate of the new primary role.
+  const extraRoles = (employee.extra_roles ?? []).filter((r: string) => r !== role);
+
+  const { error: updateError } = await supabaseAdmin
+    .from("employees")
+    .update({ role, extra_roles: extraRoles })
+    .eq("id", employeeId);
+  if (updateError) return { status: "error", error: updateError.message };
+
+  revalidatePath("/admin/employees");
+
+  return { status: "success" };
+}
+
+export type SetEmployeeActiveState = {
+  status: "idle" | "success" | "error";
+  error?: string;
+};
+
+// "Deactivate" rather than delete — item_status_log.changed_by,
+// items.created_by, etc. reference employees.id for historical
+// attribution ("who did this"), which a hard delete would either orphan
+// or silently lose. Blocking sign-in via Supabase Auth's ban keeps every
+// past record intact and is reversible.
+export async function setEmployeeActive(
+  _prevState: SetEmployeeActiveState,
+  formData: FormData
+): Promise<SetEmployeeActiveState> {
+  const access = await checkRole("admin");
+  if (!access.ok) return { status: "error", error: access.error };
+
+  const employeeId = String(formData.get("employeeId") ?? "").trim();
+  const active = formData.get("active") === "true";
+  if (!employeeId) return { status: "error", error: "Nieprawidłowe dane" };
+
+  if (!active && employeeId === access.employee.id) {
+    return { status: "error", error: "Nie możesz zablokować własnego konta" };
+  }
+
+  const { data: employee, error: fetchError } = await supabaseAdmin
+    .from("employees")
+    .select("auth_user_id")
+    .eq("id", employeeId)
+    .single();
+  if (fetchError) return { status: "error", error: fetchError.message };
+  if (!employee.auth_user_id) {
+    return { status: "error", error: "Ten pracownik nie ma konta logowania" };
+  }
+
+  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
+    employee.auth_user_id,
+    { ban_duration: active ? "none" : "876000h" }
+  );
+  if (authError) return { status: "error", error: authError.message };
+
+  revalidatePath("/admin/employees");
+
+  return { status: "success" };
+}
