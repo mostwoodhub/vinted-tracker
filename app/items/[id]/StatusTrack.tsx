@@ -2,12 +2,27 @@ const STEPS = [
   { key: "received", label: "Przyjęto" },
   { key: "photos_uploaded", label: "Zdjęcia" },
   { key: "ai_card_ready", label: "Karta AI" },
+  { key: "ready_to_publish", label: "Gotowe" },
   { key: "published", label: "Publikacja" },
   { key: "sold", label: "Sprzedano" },
 ];
 
 export function StatusTrack({ status }: { status: string }) {
   const currentIndex = STEPS.findIndex((step) => step.key === status);
+
+  // Not a forward step in the pipeline — an item lands here from
+  // "published" and then goes back to "ready_to_publish" or
+  // "photos_uploaded" (see RETURN_NEXT_STATUSES), so it doesn't have a
+  // sensible position in a left-to-right track. Shown as its own banner
+  // instead of forcing it into STEPS, where findIndex would return -1 and
+  // leave every step looking neither done nor current.
+  if (status === "returned") {
+    return (
+      <div className="flex w-fit items-center gap-2 rounded-full bg-[var(--color-warning-bg)] px-3 py-1.5 text-xs font-medium text-[var(--color-warning)]">
+        ↩️ Zwrócono — czeka na wybór kolejnego kroku
+      </div>
+    );
+  }
 
   return (
     <ol className="flex items-center">
