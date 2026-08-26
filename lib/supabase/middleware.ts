@@ -5,7 +5,14 @@ import { NextResponse, type NextRequest } from "next/server";
 // /reset-password must stay public: the recovery link's session lives only
 // in the URL hash, processed client-side — the server-side check below would
 // otherwise redirect the user to /login before that client code ever runs.
-const PUBLIC_PATHS = ["/login", "/reset-password"];
+//
+// /manifest.webmanifest must stay public too: Android's install/WebAPK
+// check fetches it directly and expects real JSON back — a redirect to
+// /login instead (which is what an unauthenticated request got before
+// this) makes Chrome silently fail the installability check and fall
+// back to a plain "Add to Home screen" shortcut instead of a real,
+// standalone-mode app install.
+const PUBLIC_PATHS = ["/login", "/reset-password", "/manifest.webmanifest"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
