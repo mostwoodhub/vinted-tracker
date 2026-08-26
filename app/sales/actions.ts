@@ -107,17 +107,6 @@ export async function updateSale(
     return { status: "error", error: err instanceof Error ? err.message : "Nie udało się przesłać etykiety" };
   }
 
-  const existingReceiptUrl = String(formData.get("existingReceiptUrl") ?? "").trim();
-  const newReceipt = formData.get("receipt");
-  let receiptUrl: string | null = existingReceiptUrl || null;
-  try {
-    if (newReceipt instanceof File && newReceipt.size > 0) {
-      receiptUrl = (await uploadSaleFile(newReceipt)).url;
-    }
-  } catch (err) {
-    return { status: "error", error: err instanceof Error ? err.message : "Nie udało się przesłać zrzutu ekranu" };
-  }
-
   const { error } = await supabaseAdmin
     .from("sales")
     .update({
@@ -147,7 +136,6 @@ export async function updateSale(
       label_filename: label1Result.filename,
       label_url2: label2Result.url,
       label_filename2: label2Result.filename,
-      receipt_url: receiptUrl,
     })
     .eq("id", saleId);
 

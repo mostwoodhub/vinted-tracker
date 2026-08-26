@@ -270,11 +270,6 @@ type LabelSlot =
   | { kind: "empty" }
   | { kind: "existing"; url: string; filename: string | null }
   | { kind: "new"; file: File; previewUrl: string };
-type ReceiptSlot =
-  | { kind: "empty" }
-  | { kind: "existing"; url: string }
-  | { kind: "new"; file: File; previewUrl: string };
-
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const initialState: AddSaleState = { status: "idle" };
 const emptyPair = (): Pair => ({ shoeId: "", price: "", cost: "", resolvedItemId: null });
@@ -359,39 +354,6 @@ export function AddSaleForm({
   const [pendingLabelSource, setPendingLabelSource] = useState<File | null>(null);
   const label1InputRef = useRef<HTMLInputElement>(null);
   const label2InputRef = useRef<HTMLInputElement>(null);
-
-  const [receiptSlot, setReceiptSlot] = useState<ReceiptSlot>(
-    initialSale?.receipt_url ? { kind: "existing", url: initialSale.receipt_url } : { kind: "empty" }
-  );
-  const receiptInputRef = useRef<HTMLInputElement>(null);
-
-  function syncReceiptInput(slot: ReceiptSlot) {
-    const dt = new DataTransfer();
-    if (slot.kind === "new") dt.items.add(slot.file);
-    if (receiptInputRef.current) receiptInputRef.current.files = dt.files;
-  }
-
-  function handleReceiptSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (receiptSlot.kind === "new") URL.revokeObjectURL(receiptSlot.previewUrl);
-    const slot: ReceiptSlot = { kind: "new", file, previewUrl: URL.createObjectURL(file) };
-    setReceiptSlot(slot);
-    syncReceiptInput(slot);
-  }
-
-  function removeReceipt() {
-    if (receiptSlot.kind === "new") URL.revokeObjectURL(receiptSlot.previewUrl);
-    setReceiptSlot({ kind: "empty" });
-    syncReceiptInput({ kind: "empty" });
-  }
-
-  function receiptPreviewSrc(): string | null {
-    if (receiptSlot.kind === "existing") return receiptSlot.url;
-    if (receiptSlot.kind === "new") return receiptSlot.previewUrl;
-    return null;
-  }
 
   // If the sale's current account was since renamed/deleted from the master
   // list, keep it selectable so editing the sale doesn't silently reassign
@@ -890,41 +852,6 @@ export function AddSaleForm({
                 ? "Kliknij lub przeciągnij plik etykiety (PDF/JPG/PNG)"
                 : "Dodaj kolejny plik etykiety"
             }
-          />
-        )}
-      </div>
-
-      <div className={`flex flex-col gap-3 ${cardClass}`}>
-        <span className={labelClass}>Zrzut ekranu sprzedaży (dowód)</span>
-        <input ref={receiptInputRef} type="file" name="receipt" className="hidden" />
-        <input
-          type="hidden"
-          name="existingReceiptUrl"
-          value={receiptSlot.kind === "existing" ? receiptSlot.url : ""}
-        />
-        {receiptPreviewSrc() && (
-          <div className="relative w-fit">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={receiptPreviewSrc()!}
-              alt=""
-              className="h-20 w-20 rounded-[var(--radius-sm)] border border-[var(--color-border)] object-cover"
-            />
-            <button
-              type="button"
-              onClick={removeReceipt}
-              aria-label="Usuń zrzut ekranu"
-              className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-danger)] text-xs font-bold text-white"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-        {receiptSlot.kind === "empty" && (
-          <FileDropzone
-            accept="image/*"
-            onChange={handleReceiptSelected}
-            label="Kliknij lub przeciągnij zrzut ekranu tutaj"
           />
         )}
       </div>
