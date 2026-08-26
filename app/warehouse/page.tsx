@@ -18,14 +18,20 @@ export default async function WarehousePage() {
   const isAdmin = roles.has("admin");
 
   // Independent of each other — fire together instead of one after another.
-  const [{ data: items }, { data: batchRows }, saleRows] = await Promise.all([
-    supabaseAdmin
-      .from("items")
-      .select(
-        "id, internal_number, legacy_number, brand, model, size, condition, condition_detail, price, cost_price, status, batches(id, label)"
-      )
-      .is("deleted_at", null)
-      .order("internal_number", { ascending: false }),
+  const [rawItems, { data: batchRows }, saleRows] = await Promise.all([
+    // Paginated: a plain .select() silently caps at PostgREST's 1000-row
+    // default, and this table has since crossed that line — without this,
+    // the newest items just don't show up on the warehouse page at all.
+    fetchAllRows<unknown>((from, to) =>
+      supabaseAdmin
+        .from("items")
+        .select(
+          "id, internal_number, legacy_number, brand, model, size, condition, condition_detail, price, cost_price, status, batches(id, label)"
+        )
+        .is("deleted_at", null)
+        .order("internal_number", { ascending: false })
+        .range(from, to)
+    ),
     // Every batch that exists, not just ones items happen to be linked to
     // (most items aren't linked to a batch yet) — otherwise the Partia
     // filter has nothing to show.
@@ -45,7 +51,7 @@ export default async function WarehousePage() {
     ),
   ]);
 
-  const rows = (items ?? []) as unknown as Omit<WarehouseCardItem, "hasPhoto">[];
+  const rows = rawItems as unknown as Omit<WarehouseCardItem, "hasPhoto">[];
   const salePriceIndex = buildSalePriceIndex(saleRows);
   const ids = rows.map((row) => row.id);
   const allBatchLabels = (batchRows ?? [])
