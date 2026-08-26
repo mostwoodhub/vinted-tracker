@@ -5,6 +5,7 @@ import { fetchAllRows } from "@/lib/fetch-all";
 import { computeLinkedSales } from "@/lib/batch-stats";
 import type { SaleRow } from "@/lib/sales-types";
 import { BatchesSection, type BatchRow } from "./BatchesSection";
+import { PhotoCropTool } from "./PhotoCropTool";
 import { pageWrapClass } from "@/lib/ui-classes";
 
 export default async function BatchesArchivePage() {
@@ -118,6 +119,7 @@ export default async function BatchesArchivePage() {
   return (
     <div className={pageWrapClass}>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-[var(--space-xl)] px-6 py-12">
+        <PhotoCropTool />
         <BatchesSection batches={batches} />
       </div>
     </div>

@@ -145,7 +145,10 @@ export type DiscountStats = {
 // price, same forgiving/skip-if-ambiguous approach as the rest of this file.
 // Multi-pair sales are skipped: a single asking price can't be meaningfully
 // compared against a price covering more than one pair.
-export function computeDiscountStats(sales: SaleRow[], items: MatchableItem[]): DiscountStats {
+export function computeDiscountStats(
+  sales: Pick<SaleRow, "quantity" | "items" | "sale_price" | "legacy_shoe_id">[],
+  items: MatchableItem[]
+): DiscountStats {
   const index = buildItemIndex(items);
   let matchedCount = 0;
   let fullPriceCount = 0;

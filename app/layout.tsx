@@ -53,6 +53,7 @@ function getNavGroups(roles: Set<string>): NavGroup[] {
         { href: "/admin/trash", label: "Kosz" },
         { href: "/admin/olx", label: "OLX" },
         { href: "/admin/allegro", label: "Allegro" },
+        { href: "/admin/backup", label: "Kopia zapasowa" },
       ],
     });
     groups.push({ type: "link", href: "/dashboard", label: "Dashboard" });

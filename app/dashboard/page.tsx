@@ -4,9 +4,11 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getCurrentEmployee, getEffectiveRoles } from "@/lib/auth";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { computeLinkedSales } from "@/lib/batch-stats";
+import { computeDiscountStats } from "@/lib/sales-stats";
+import type { MatchableItem } from "@/lib/item-sale-match";
 import type { SaleRow } from "@/lib/sales-types";
 import { IntakeStatsSection, type IntakeItem } from "./IntakeStatsSection";
-import { warsawDateString } from "@/lib/warsaw-time";
+import { warsawDateString, daysInMonthIso } from "@/lib/warsaw-time";
 import { daysBetween } from "@/lib/day-buckets";
 import { computePipelineAging, type PipelineStageRow } from "@/lib/pipeline-aging";
 import { cardClass, headingClass, mutedTextClass, pageWrapClass } from "@/lib/ui-classes";
@@ -104,6 +106,12 @@ export default async function DashboardPage() {
     redirect("/warehouse");
   }
 
+  // Needed up front to bound the current-month sales query below.
+  const todayWarsawForMonth = warsawDateString(new Date());
+  const currentMonth = todayWarsawForMonth.slice(0, 7);
+  const monthStart = `${currentMonth}-01`;
+  const monthEnd = `${currentMonth}-${String(daysInMonthIso(currentMonth)).padStart(2, "0")}`;
+
   // Independent of each other — fire together instead of one after another.
   const [
     { data: items },
@@ -113,6 +121,7 @@ export default async function DashboardPage() {
     { data: employees },
     { data: photoLog },
     statusLog,
+    currentMonthSales,
   ] = await Promise.all([
       // Paginated: a plain .select() silently caps at PostgREST's 1000-row
       // default, and this table has since crossed that line — without this,
@@ -126,10 +135,17 @@ export default async function DashboardPage() {
         batch_id: string | null;
         created_by: string | null;
         created_at: string | null;
+        internal_number: number;
+        legacy_number: string | null;
+        brand: string | null;
+        size: string | null;
+        batches: { label: string | null } | { label: string | null }[] | null;
       }>((from, to) =>
         supabaseAdmin
           .from("items")
-          .select("id, status, price, cost_price, batch_id, created_by, created_at")
+          .select(
+            "id, status, price, cost_price, batch_id, created_by, created_at, internal_number, legacy_number, brand, size, batches(label)"
+          )
           .is("deleted_at", null)
           .range(from, to)
       ).then((data) => ({ data })),
@@ -182,9 +198,27 @@ export default async function DashboardPage() {
           .select("item_id, changed_at")
           .range(from, to)
       ),
+      // For "Prognozowany przychód" below — the discount % has to reflect
+      // how much cheaper this month's actual sales went vs. their asking
+      // price, not a guessed constant, so it stays accurate as the month's
+      // sales mix changes.
+      fetchAllRows<{
+        legacy_shoe_id: string | null;
+        sale_price: number | null;
+        quantity: number | null;
+        items: { shoeId: string; price: number; cost: number; itemId?: string | null }[] | null;
+      }>((from, to) =>
+        supabaseAdmin
+          .from("sales")
+          .select("legacy_shoe_id, sale_price, quantity, items")
+          .is("deleted_at", null)
+          .gte("sale_date", monthStart)
+          .lte("sale_date", monthEnd)
+          .range(from, to)
+      ),
     ]);
 
-  const todayWarsaw = warsawDateString(new Date());
+  const todayWarsaw = todayWarsawForMonth;
 
   // Two employees can share a full_name (e.g. two people both named
   // "Daria") — the id is the real identity, so a name collision needs a
@@ -254,7 +288,27 @@ export default async function DashboardPage() {
     (sum, item) => sum + (item.price ?? 0),
     0
   );
-  const projectedRevenueDiscounted = projectedRevenue * 0.9;
+
+  // How much cheaper this month's actual sales went vs. their asking price
+  // — used below instead of a guessed constant, so the forecast tracks
+  // reality as the month's sales mix changes.
+  const matchableItems: MatchableItem[] = rows.map((item) => {
+    const batchesField = item.batches as { label: string | null } | { label: string | null }[] | null;
+    const batchLabel = Array.isArray(batchesField)
+      ? batchesField[0]?.label ?? null
+      : batchesField?.label ?? null;
+    return {
+      internalNumber: item.internal_number,
+      legacyNumber: item.legacy_number,
+      batchLabel,
+      brand: item.brand,
+      size: item.size,
+      price: item.price,
+    };
+  });
+  const discountStats = computeDiscountStats(currentMonthSales, matchableItems);
+  const discountPercent = discountStats.averageDiscountPercent;
+  const projectedRevenueDiscounted = projectedRevenue * (1 - discountPercent / 100);
 
   const legacyCostByLabel = new Map<string, number>();
   for (const row of expenseRows ?? []) {
@@ -361,7 +415,7 @@ export default async function DashboardPage() {
             value={formatPln(projectedRevenue)}
           />
           <Tile
-            label="Prognozowany przychód (rabat 10%)"
+            label={`Prognozowany przychód (rabat ${discountPercent.toFixed(1)}%)`}
             value={formatPln(projectedRevenueDiscounted)}
           />
         </div>
