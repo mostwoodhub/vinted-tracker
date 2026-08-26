@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 // Allegro REST API — endpoints confirmed against a live account (Client ID
@@ -553,6 +554,67 @@ export async function createAllegroOffer(
   }
 
   return { ok: true, data: { id: data.id, status: data.publication?.status ?? "UNKNOWN", url: allegroOfferUrl(data.id) } };
+}
+
+// Creating an offer with publication.status:"ACTIVE" does NOT reliably
+// activate it — verified live that offers created this way can sit stuck
+// INACTIVE with no error surfaced at creation time. Allegro requires this
+// separate, explicit, asynchronous activation command; the only place its
+// real rejection reason (e.g. anti-circumvention text in the description)
+// shows up is the per-offer task fetched at the end here, not the create
+// response and not the command's own summary.
+const ACTIVATION_POLL_ATTEMPTS = 6;
+const ACTIVATION_POLL_DELAY_MS = 4000;
+
+export async function activateAllegroOffer(
+  token: string,
+  offerId: string
+): Promise<AllegroResult<AllegroOffer>> {
+  const commandId = randomUUID();
+  const res = await fetch(`${API_BASE}/sale/offer-publication-commands/${commandId}`, {
+    method: "PUT",
+    headers: authedHeaders(token, true),
+    body: JSON.stringify({
+      publication: { action: "ACTIVATE" },
+      offerCriteria: [{ offers: [{ id: offerId }], type: "CONTAINS_OFFERS" }],
+    }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) return { ok: false, error: allegroErrorMessage(data, res.status) };
+
+  let completedAt: string | null = data?.completedAt ?? null;
+  for (let attempt = 0; !completedAt && attempt < ACTIVATION_POLL_ATTEMPTS; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, ACTIVATION_POLL_DELAY_MS));
+    const pollRes = await fetch(`${API_BASE}/sale/offer-publication-commands/${commandId}`, {
+      headers: authedHeaders(token, false),
+    });
+    const pollData = await pollRes.json().catch(() => null);
+    if (!pollRes.ok) return { ok: false, error: allegroErrorMessage(pollData, pollRes.status) };
+    completedAt = pollData?.completedAt ?? null;
+  }
+
+  if (!completedAt) {
+    return { ok: false, error: "Aktywacja oferty Allegro nie zakończyła się w oczekiwanym czasie" };
+  }
+
+  const tasksRes = await fetch(`${API_BASE}/sale/offer-publication-commands/${commandId}/tasks`, {
+    headers: authedHeaders(token, false),
+  });
+  const tasksData = await tasksRes.json().catch(() => null);
+  if (!tasksRes.ok) return { ok: false, error: allegroErrorMessage(tasksData, tasksRes.status) };
+
+  const tasks = Array.isArray(tasksData?.tasks) ? tasksData.tasks : [];
+  const task =
+    tasks.find((t: { offer?: { id?: string } }) => t.offer?.id === offerId) ?? tasks[0] ?? null;
+
+  if (task?.status === "SUCCESS") {
+    return { ok: true, data: { id: offerId, status: "ACTIVE", url: allegroOfferUrl(offerId) } };
+  }
+
+  const firstError = task?.errors?.[0] as { userMessage?: string; message?: string } | undefined;
+  const errorMessage =
+    firstError?.userMessage ?? firstError?.message ?? task?.message ?? "Aktywacja oferty Allegro nie powiodła się";
+  return { ok: false, error: errorMessage };
 }
 
 export async function getAllegroOffer(token: string, offerId: string): Promise<AllegroResult<AllegroOffer>> {

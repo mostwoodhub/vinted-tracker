@@ -724,7 +724,10 @@ function PublishAllegroApiForm({
       {state.status === "error" && (
         <span className="text-xs text-[var(--color-danger)]">{state.error}</span>
       )}
-      {state.status === "success" && (
+      {state.status === "success" && state.warning && (
+        <span className="text-xs text-[var(--color-warning)]">{state.warning}</span>
+      )}
+      {state.status === "success" && !state.warning && (
         <span className={`text-xs ${successTextClass}`}>Opublikowano na Allegro.</span>
       )}
     </div>

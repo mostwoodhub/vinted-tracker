@@ -81,6 +81,8 @@ Zidentyfikuj dokładny model butów na podstawie zdjęć, a następnie wygeneruj
 
 Nie pisz w opisie nic o odbiorze osobistym, wysyłce, kurierze ani kosztach/warunkach dostawy — to ustawiane jest osobno na każdej platformie, nie jest częścią opisu produktu.
 
+Nie zachęcaj kupującego do kontaktu poza platformą — żadnych zwrotów typu "zapraszam do kontaktu w razie pytań", "piszcie śmiało", numerów telefonu itp. Allegro automatycznie odrzuca aktywację ogłoszenia z takim tekstem (traktuje to jako próbę ominięcia platformy), więc pomiń to zupełnie we wszystkich trzech opisach.
+
 Dodatkowo, na podstawie modelu, stanu, wad oraz historii sprzedaży tej marki, zaproponuj rozsądną cenę sprzedaży (suggestedPrice, w złotych) i krótko uzasadnij (priceReasoning, 1-2 zdania). Jeśli brak historii, oprzyj się na ogólnej wiedzy o wartości rynkowej tego modelu.
 
 Odpowiedz wyłącznie przez wywołanie narzędzia submit_listing_data.`;

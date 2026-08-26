@@ -23,6 +23,7 @@ import {
   buildAllegroParameters,
   uploadAllegroImage,
   createAllegroOffer,
+  activateAllegroOffer,
   getAllegroOffer,
   endAllegroOffer,
   ALLEGRO_MAX_PHOTOS,
@@ -112,6 +113,12 @@ export async function saveDraftChanges(
 export type PublicationActionState = {
   status: "idle" | "success" | "error";
   error?: string;
+  // Only set by publishAllegroOffer: the offer was created and is tracked,
+  // but the separate activation step (see activateAllegroOffer) failed —
+  // e.g. Allegro's anti-circumvention policy rejected the description. The
+  // publication still exists so it isn't silently lost; this just tells the
+  // publisher it needs a look instead of appearing to have gone live.
+  warning?: string;
 };
 
 // Items are marked "ready_to_publish" as a whole (all three draft cards
@@ -472,6 +479,14 @@ export async function publishAllegroOffer(
   });
   if (!offer.ok) return { status: "error", error: offer.error };
 
+  // Creating the offer with active:true above doesn't reliably activate
+  // it — this separate command is Allegro's real activation step, and the
+  // only place its real rejection reason (e.g. a content-policy violation)
+  // surfaces. Failing here doesn't undo the offer or fail the publish: it
+  // already exists on Allegro and must stay tracked, just flagged as
+  // needing attention instead of quietly sitting INACTIVE.
+  const activation = await activateAllegroOffer(auth.accessToken, offer.data.id);
+
   const { error: insertError } = await supabaseAdmin.from("listing_publications").insert({
     listing_id: listingId,
     item_id: itemId,
@@ -479,8 +494,9 @@ export async function publishAllegroOffer(
     photo_set_id: photoSetId || null,
     allegro_offer_id: offer.data.id,
     allegro_url: offer.data.url,
-    allegro_status: offer.data.status,
+    allegro_status: activation.ok ? activation.data.status : offer.data.status,
     allegro_synced_at: new Date().toISOString(),
+    allegro_last_error: activation.ok ? null : activation.error,
   });
   if (insertError) return { status: "error", error: insertError.message };
 
@@ -503,7 +519,9 @@ export async function publishAllegroOffer(
   revalidatePath("/warehouse");
   revalidatePath("/dashboard");
 
-  return { status: "success" };
+  return activation.ok
+    ? { status: "success" }
+    : { status: "success", warning: `Oferta utworzona, ale aktywacja nie powiodła się: ${activation.error}` };
 }
 
 export async function removeListingPublication(
@@ -687,6 +705,7 @@ export async function refreshAllegroOfferStatus(
     .update({
       allegro_status: offer.data.status,
       allegro_synced_at: new Date().toISOString(),
+      allegro_last_error: null,
     })
     .eq("id", publicationId);
 
