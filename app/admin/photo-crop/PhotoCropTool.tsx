@@ -61,12 +61,35 @@ export function PhotoCropTool() {
     setPending(true);
     setError(null);
     try {
+      const croppedFiles: File[] = [];
       for (let i = 0; i < files.length; i++) {
         const blob = await cropImageFile(files[i], cropPercent);
-        const objectUrl = URL.createObjectURL(blob);
+        croppedFiles.push(new File([blob], `cropped-${files[i].name}`, { type: blob.type }));
+      }
+
+      // Mobile browsers — iOS Safari especially — handle a batch of
+      // separate <a download> clicks unreliably: it often just opens each
+      // photo in a new tab instead of saving it, and rapid successive
+      // clicks are more likely to get dropped than on desktop. The native
+      // share sheet's own "Save Image(s)" action is the reliable way to
+      // land multiple photos in Photos/gallery there, so prefer it
+      // whenever the browser can share files at all (desktop browsers
+      // mostly can't, so this falls through to the download loop there).
+      if (navigator.canShare?.({ files: croppedFiles })) {
+        try {
+          await navigator.share({ files: croppedFiles });
+          return;
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          // Any other share failure: fall through to the download loop.
+        }
+      }
+
+      for (let i = 0; i < croppedFiles.length; i++) {
+        const objectUrl = URL.createObjectURL(croppedFiles[i]);
         const link = document.createElement("a");
         link.href = objectUrl;
-        link.download = `cropped-${files[i].name}`;
+        link.download = croppedFiles[i].name;
         link.click();
         URL.revokeObjectURL(objectUrl);
         // Sequential with a short gap — firing several downloads at once
