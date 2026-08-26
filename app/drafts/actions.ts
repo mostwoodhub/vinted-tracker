@@ -1,8 +1,11 @@
 "use server";
 
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
+import { sendTelegramMessage } from "@/lib/telegram";
+import { formatItemNumber } from "@/lib/item-number";
 import { resolveListingPhotoRows, prepareListingPhotoUrls } from "@/lib/item-photos";
 import {
   getOlxToken,
@@ -31,6 +34,27 @@ import {
 } from "@/lib/allegro-client";
 
 const PLATFORMS = ["vinted", "allegro", "olx"];
+
+const SITE_URL = "https://vinted-tracker-khaki.vercel.app";
+
+// Best-effort, human-friendly item reference for a Telegram alert — falls
+// back to the raw id if the item was deleted or the lookup itself fails,
+// since a publish failure alert is worth sending even without this detail.
+async function describeItemForAlert(itemId: string): Promise<string> {
+  try {
+    const { data } = await supabaseAdmin
+      .from("items")
+      .select("internal_number, legacy_number, batches(label)")
+      .eq("id", itemId)
+      .single();
+    if (!data) return itemId;
+    const batches = data.batches as { label: string | null } | { label: string | null }[] | null;
+    const batchLabel = Array.isArray(batches) ? batches[0]?.label ?? null : batches?.label ?? null;
+    return formatItemNumber(batchLabel, data.internal_number, data.legacy_number);
+  } catch {
+    return itemId;
+  }
+}
 
 // The publish forms send the PhotoOrderPicker's current selection as a JSON
 // array on every submit (see publishOlxAdvert/publishAllegroOffer) — a
@@ -192,7 +216,35 @@ export async function addListingPublication(
 // recording that an employee posted it by hand elsewhere. Always filed
 // under a dedicated "OLX API" account so it's visually distinct from
 // manual OLX postings in the same list.
+// Wraps attemptPublishOlxAdvert to fire a Telegram alert on failure without
+// touching any of its many existing early-return error paths — the owner
+// gets pinged regardless of whether the publisher notices the on-screen
+// error, same visibility level as a new sale or a new unpriced batch.
 export async function publishOlxAdvert(
+  prevState: PublicationActionState,
+  formData: FormData
+): Promise<PublicationActionState> {
+  const result = await attemptPublishOlxAdvert(prevState, formData);
+  if (result.status === "error") {
+    const itemId = String(formData.get("itemId") ?? "").trim();
+    after(async () => {
+      const itemLabel = itemId ? await describeItemForAlert(itemId) : "?";
+      await sendTelegramMessage(
+        [
+          "❌ <b>Publikacja OLX nie powiodła się</b>",
+          `Towar: ${itemLabel}`,
+          result.error,
+          itemId ? `${SITE_URL}/items/${itemId}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      );
+    });
+  }
+  return result;
+}
+
+async function attemptPublishOlxAdvert(
   _prevState: PublicationActionState,
   formData: FormData
 ): Promise<PublicationActionState> {
@@ -369,7 +421,52 @@ export async function getAllegroCategoryOptions(
 // items at all (Kolor/Materiał zewnętrzny on a sneaker, Zapięcie/Wysokość
 // obcasa on a boot, ...) — the caller supplies whatever getAllegroManualParams
 // flagged, by hand, right before publishing (see PublishAllegroApiForm).
+// Same wrapper shape as publishOlxAdvert, plus one more case: this offer
+// can come back "success" with a warning — created on Allegro but the
+// separate activation step failed (see activateAllegroOffer) — which is
+// exactly the silent-failure shape that prompted adding this alert at all
+// (a listing that looked published but never actually went live).
 export async function publishAllegroOffer(
+  prevState: PublicationActionState,
+  formData: FormData
+): Promise<PublicationActionState> {
+  const result = await attemptPublishAllegroOffer(prevState, formData);
+  const itemId = String(formData.get("itemId") ?? "").trim();
+
+  if (result.status === "error") {
+    after(async () => {
+      const itemLabel = itemId ? await describeItemForAlert(itemId) : "?";
+      await sendTelegramMessage(
+        [
+          "❌ <b>Publikacja Allegro nie powiodła się</b>",
+          `Towar: ${itemLabel}`,
+          result.error,
+          itemId ? `${SITE_URL}/items/${itemId}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      );
+    });
+  } else if (result.status === "success" && result.warning) {
+    after(async () => {
+      const itemLabel = itemId ? await describeItemForAlert(itemId) : "?";
+      await sendTelegramMessage(
+        [
+          "⚠️ <b>Allegro: oferta utworzona, ale nie aktywowana</b>",
+          `Towar: ${itemLabel}`,
+          result.warning,
+          itemId ? `${SITE_URL}/items/${itemId}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      );
+    });
+  }
+
+  return result;
+}
+
+async function attemptPublishAllegroOffer(
   _prevState: PublicationActionState,
   formData: FormData
 ): Promise<PublicationActionState> {
