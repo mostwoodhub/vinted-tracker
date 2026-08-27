@@ -70,6 +70,12 @@ export function LabelCropModal({
     startRect: Rect;
   } | null>(null);
   const objectUrlRef = useRef<string | null>(null);
+  // The card's own available width (inside its padding) — DISPLAY_MAX_WIDTH
+  // is a desktop-sized ceiling, but on a phone the card itself is much
+  // narrower than that, and the crop area used to render at the fixed
+  // desktop size regardless, spilling off the right edge of the screen
+  // with the resize handles on that side unreachable.
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return () => {
@@ -105,7 +111,13 @@ export function LabelCropModal({
 
         if (cancelled) return;
 
-        const scale = Math.min(DISPLAY_MAX_WIDTH / width, DISPLAY_MAX_HEIGHT / height, 1);
+        // Fall back to the desktop ceiling if the card hasn't laid out yet
+        // (shouldn't happen — the card wrapper is mounted from the very
+        // first "ask-count" stage, well before this runs).
+        const maxWidth = Math.min(DISPLAY_MAX_WIDTH, cardRef.current?.clientWidth || DISPLAY_MAX_WIDTH);
+        const maxHeight = Math.min(DISPLAY_MAX_HEIGHT, Math.round(window.innerHeight * 0.5));
+
+        const scale = Math.min(maxWidth / width, maxHeight / height, 1);
         const dispW = Math.max(1, Math.round(width * scale));
         const dispH = Math.max(1, Math.round(height * scale));
 
@@ -269,7 +281,7 @@ export function LabelCropModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className={`flex w-full max-w-xl flex-col gap-4 ${cardClass}`}>
+      <div ref={cardRef} className={`flex w-full max-w-xl flex-col gap-4 ${cardClass}`}>
         {stage === "ask-count" && (
           <>
             <h2 className="text-lg font-semibold text-[var(--color-text)]">Ile etykiet na pliku?</h2>
