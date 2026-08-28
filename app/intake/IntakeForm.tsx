@@ -157,6 +157,16 @@ export function IntakeForm({
 }: IntakeFormProps) {
   const [state, formAction] = useActionState(createItem, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  // React resets every uncontrolled field in this form (Marka, Rozmiar,
+  // Cena, defects, ...) back to blank the moment a form action is
+  // dispatched — regardless of what that submit returns. That's fine on
+  // success (the reset is wanted there too), but it means that by the time
+  // "Dodaj mimo to" re-reads the DOM after a "duplicate" response, Marka
+  // and Rozmiar are already empty, and the resubmit silently fails its own
+  // "Podaj markę" check instead of actually adding the item. Snapshotting
+  // the FormData in onSubmit — before React's reset — and reusing that
+  // snapshot for the retry sidesteps it entirely.
+  const lastSubmittedFormData = useRef<FormData | null>(null);
   const photosInputRef = useRef<HTMLInputElement>(null);
   const [compressingPhotos, setCompressingPhotos] = useState(false);
   const [condition, setCondition] = useState("");
@@ -225,9 +235,14 @@ export function IntakeForm({
   // silently no-op a JS-triggered requestSubmit(), which made this button
   // look like it did nothing. formAction (from useActionState) accepts a
   // FormData directly, so this sidesteps native form submission entirely.
+  //
+  // Re-reading the live DOM here would also re-read Marka/Rozmiar/etc.
+  // *after* React already reset them from the first submit — using the
+  // onSubmit snapshot instead is what actually makes "Dodaj mimo to" send
+  // the data the employee typed, not blanks.
   function handleAddAnyway() {
-    if (!formRef.current) return;
-    const formData = new FormData(formRef.current);
+    const formData = lastSubmittedFormData.current;
+    if (!formData) return;
     formData.set("confirmDuplicate", "true");
     formAction(formData);
   }
@@ -258,6 +273,7 @@ export function IntakeForm({
     // formRef.current, and refs must not be read or written during render.
     if (state.status === "success") {
       formRef.current?.reset();
+      lastSubmittedFormData.current = null;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCondition("");
       setCount((c) => (c ?? 0) + 1);
@@ -284,7 +300,14 @@ export function IntakeForm({
         )}
         <h1 className={headingClass}>{heading}</h1>
 
-      <form ref={formRef} action={formAction} className="flex flex-col gap-5">
+      <form
+        ref={formRef}
+        action={formAction}
+        onSubmit={(e) => {
+          lastSubmittedFormData.current = new FormData(e.currentTarget);
+        }}
+        className="flex flex-col gap-5"
+      >
         <input
           type="hidden"
           name="confirmDuplicate"
