@@ -98,9 +98,22 @@ function printLabel(state: IntakeState) {
          wysyłkową (PDF) drukowaną przy sprzedaży, to zupełnie inny druk. */
       @page { size: 40mm 20mm; margin: 1mm; }
       * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+      }
       body {
         font-family: Arial, sans-serif;
-        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #f5f5f5;
+      }
+      /* On screen this is just a preview at a readable size — the actual
+         print output is sized by @page above, independent of this. */
+      .label {
         width: 38mm;
         height: 18mm;
         overflow: hidden;
@@ -108,6 +121,9 @@ function printLabel(state: IntakeState) {
         flex-direction: column;
         justify-content: center;
         gap: 0.5mm;
+        background: #fff;
+        border: 1px solid #ccc;
+        padding: 1mm;
       }
       .number { font-size: 16px; font-weight: 700; line-height: 1.1; }
       .line {
@@ -117,12 +133,34 @@ function printLabel(state: IntakeState) {
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      /* On a phone opening this as a standalone-app window, there's no
+         browser chrome at all — no back button, no address bar — so
+         without this, the only way out is force-quitting the app. */
+      .close-btn {
+        font-family: Arial, sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        padding: 12px 28px;
+        border: none;
+        border-radius: 999px;
+        background: #14141a;
+        color: #fff;
+      }
+      @media print {
+        body { background: #fff; }
+        .label { border: none; padding: 0; }
+        .close-btn { display: none; }
+      }
     </style>
   </head>
   <body>
-    <div class="number">${displayNumber}</div>
-    <div class="line">${brand} · ${size}</div>
-    <div class="line">${defectsLine}</div>
+    <div class="label">
+      <div class="number">${displayNumber}</div>
+      <div class="line">${brand} · ${size}</div>
+      <div class="line">${defectsLine}</div>
+    </div>
+    <button type="button" class="close-btn" onclick="window.close()">✕ Zamknij</button>
+    <script>window.onafterprint = function () { window.close(); };</script>
   </body>
 </html>`);
   printWindow.document.close();
