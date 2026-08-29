@@ -33,6 +33,17 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
+// clientWidth includes the element's own padding — the crop area renders
+// as a CHILD inside that padding, so sizing it off the raw clientWidth
+// left it consistently ~2×padding too wide for the card it sits in
+// (subtle on desktop, a real overflow on a narrow phone screen).
+function contentWidth(el: HTMLElement): number {
+  const style = window.getComputedStyle(el);
+  const paddingLeft = parseFloat(style.paddingLeft) || 0;
+  const paddingRight = parseFloat(style.paddingRight) || 0;
+  return el.clientWidth - paddingLeft - paddingRight;
+}
+
 function defaultRect(width: number, height: number): Rect {
   return {
     x: Math.round(width * 0.05),
@@ -114,7 +125,8 @@ export function LabelCropModal({
         // Fall back to the desktop ceiling if the card hasn't laid out yet
         // (shouldn't happen — the card wrapper is mounted from the very
         // first "ask-count" stage, well before this runs).
-        const maxWidth = Math.min(DISPLAY_MAX_WIDTH, cardRef.current?.clientWidth || DISPLAY_MAX_WIDTH);
+        const availableWidth = cardRef.current ? contentWidth(cardRef.current) : 0;
+        const maxWidth = Math.min(DISPLAY_MAX_WIDTH, availableWidth || DISPLAY_MAX_WIDTH);
         const maxHeight = Math.min(DISPLAY_MAX_HEIGHT, Math.round(window.innerHeight * 0.5));
 
         const scale = Math.min(maxWidth / width, maxHeight / height, 1);
