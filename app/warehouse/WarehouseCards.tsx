@@ -43,7 +43,10 @@ export type WarehouseCardItem = {
   salePrice?: number | null;
 };
 
-const READY_STATUSES = ["ready_to_publish", "published", "sold"];
+// Deliberately excludes "sold" — a sold item has left the warehouse, so it
+// only ever shows up under the dedicated "✓ Sprzedano" pill, never bundled
+// into "gotowe/opublikowane" or the unfiltered "Wszystkie" view.
+const READY_STATUSES = ["ready_to_publish", "published"];
 const STALE_THRESHOLD_DAYS = 30;
 
 const STATUS_ORDER = [
@@ -603,17 +606,16 @@ export function WarehouseCards({
     });
   }
 
-  const filtered = useMemo(() => {
+  // Brand/size/batch/condition/price/search — everything except the status
+  // pill. Split out so the summary tiles below can reflect true totals
+  // regardless of which status pill is active, instead of collapsing to 0
+  // for every category except whichever one is currently selected.
+  const bySecondaryFilters = useMemo(() => {
     const min = minPrice ? Number(minPrice) : null;
     const max = maxPrice ? Number(maxPrice) : null;
     const query = search.trim().toLowerCase();
 
     return items.filter((item) => {
-      if (statusFilter === "ready") {
-        if (!READY_STATUSES.includes(item.status)) return false;
-      } else if (statusFilter && item.status !== statusFilter) {
-        return false;
-      }
       if (brand && item.brand !== brand) return false;
       if (size && item.size !== size) return false;
       if (batch && item.batches?.label !== batch) return false;
@@ -633,17 +635,22 @@ export function WarehouseCards({
       }
       return true;
     });
-  }, [
-    items,
-    statusFilter,
-    brand,
-    size,
-    batch,
-    condition,
-    minPrice,
-    maxPrice,
-    search,
-  ]);
+  }, [items, brand, size, batch, condition, minPrice, maxPrice, search]);
+
+  const filtered = useMemo(() => {
+    return bySecondaryFilters.filter((item) => {
+      if (statusFilter === "ready") {
+        return READY_STATUSES.includes(item.status);
+      }
+      if (statusFilter) {
+        return item.status === statusFilter;
+      }
+      // "Wszystkie" with nothing picked means everything still in the
+      // warehouse — a sold item has left it, so it only shows up when
+      // "✓ Sprzedano" is explicitly selected, not by default.
+      return item.status !== "sold";
+    });
+  }, [bySecondaryFilters, statusFilter]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -656,11 +663,11 @@ export function WarehouseCards({
   }, [filtered, sortBy]);
 
   const summary = useMemo(() => {
-    const sold = filtered.filter((item) => item.status === "sold").length;
-    const published = filtered.filter(
+    const sold = bySecondaryFilters.filter((item) => item.status === "sold").length;
+    const published = bySecondaryFilters.filter(
       (item) => item.status === "published"
     ).length;
-    const processing = filtered.filter((item) =>
+    const processing = bySecondaryFilters.filter((item) =>
       [
         "received",
         "photos_uploaded",
@@ -668,10 +675,10 @@ export function WarehouseCards({
         "ready_to_publish",
       ].includes(item.status)
     ).length;
-    const inStock = filtered.filter((item) => item.status !== "sold").length;
+    const inStock = bySecondaryFilters.filter((item) => item.status !== "sold").length;
 
     return { inStock, processing, published, sold };
-  }, [filtered]);
+  }, [bySecondaryFilters]);
 
   return (
     <div className="flex flex-col gap-[var(--space-xl)]">
