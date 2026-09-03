@@ -99,6 +99,71 @@ export type DailyPoint = {
   quantity: number;
 };
 
+// Brand is free text typed per-sale, so the same brand fragments across
+// case variants ("HOKA" / "Hoka") and brand+model entries ("HOKA BONDI 8",
+// "Nike Air") typed instead of the bare brand. This groups raw brand
+// strings case-insensitively, then folds a longer entry into a shorter one
+// that both (a) actually occurs on its own in the data and (b) is a
+// word-boundary prefix of the longer one — so "HOKA BONDI 8" and
+// "HOKA ARAHI 7" absorb into "HOKA" whenever "HOKA" is itself a real entry,
+// without a hardcoded brand list. The display label for each merged group
+// is whichever original casing was most common. Returns a map from every
+// raw (unmerged, original-cased) brand string seen to its canonical
+// display label.
+function canonicalizeBrandLabels(rawLabels: string[]): Map<string, string> {
+  // Count occurrences per case-insensitive, whitespace-normalized key, and
+  // track the most common original casing to use as that key's label.
+  const variantCountsByKey = new Map<string, Map<string, number>>();
+  for (const raw of rawLabels) {
+    const normalized = raw.trim().replace(/\s+/g, " ");
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    const variants = variantCountsByKey.get(key) ?? new Map<string, number>();
+    variants.set(normalized, (variants.get(normalized) ?? 0) + 1);
+    variantCountsByKey.set(key, variants);
+  }
+
+  const labelByKey = new Map<string, string>();
+  for (const [key, variants] of variantCountsByKey) {
+    let best = "";
+    let bestCount = -1;
+    for (const [variant, count] of variants) {
+      if (count > bestCount) {
+        best = variant;
+        bestCount = count;
+      }
+    }
+    labelByKey.set(key, best);
+  }
+
+  // Shortest keys first, so a key folds into the shortest real prefix that
+  // exists on its own — e.g. "nike air force 1" jumps straight to "nike"
+  // rather than stopping at an intermediate "nike air" if both exist.
+  const keysByLength = Array.from(variantCountsByKey.keys()).sort((a, b) => a.length - b.length);
+  const canonicalKeyOf = new Map<string, string>();
+  for (const key of keysByLength) {
+    let target = key;
+    for (const shorter of keysByLength) {
+      if (shorter.length >= key.length) break;
+      if (key.startsWith(shorter + " ")) {
+        target = shorter;
+        break;
+      }
+    }
+    canonicalKeyOf.set(key, target);
+  }
+
+  const labelByRaw = new Map<string, string>();
+  for (const raw of rawLabels) {
+    const normalized = raw.trim().replace(/\s+/g, " ");
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    const canonicalKey = canonicalKeyOf.get(key)!;
+    labelByRaw.set(raw, labelByKey.get(canonicalKey)!);
+  }
+  return labelByRaw;
+}
+
 // Groups sales by an item attribute (brand/size/batch) reached via the
 // best-effort legacy_shoe_id match. Sales that can't be matched to an item
 // fall into the "—" bucket, same as any other missing label.
@@ -271,10 +336,15 @@ export function computeSalesStatistics(
   // before that column existed. Size/batch have no such direct column yet,
   // so they still rely purely on the fuzzy match.
   const brandIndex = buildItemIndex(items);
-  const byBrand = buildBreakdown(sales, (sale) => {
+  const rawBrandFor = (sale: SaleRow): string => {
     if (sale.brand) return sale.brand;
     const item = matchItemForShoeId(sale.legacy_shoe_id, brandIndex);
-    return item?.brand ?? "—";
+    return item?.brand ?? "";
+  };
+  const brandLabelByRaw = canonicalizeBrandLabels(sales.map(rawBrandFor));
+  const byBrand = buildBreakdown(sales, (sale) => {
+    const raw = rawBrandFor(sale);
+    return raw ? brandLabelByRaw.get(raw)! : "—";
   });
   const bySize = buildItemLinkedBreakdown(sales, items, (item) => item.size ?? "—");
   const byBatch = buildItemLinkedBreakdown(sales, items, (item) => item.batchLabel ?? "—");
