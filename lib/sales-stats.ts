@@ -31,7 +31,11 @@ export function buildBreakdown(sales: SaleRow[], keyFn: (sale: SaleRow) => strin
     entry.totalRevenue += sale.sale_price ?? 0;
     map.set(label, entry);
   }
-  return Array.from(map.values()).sort((a, b) => b.totalProfit - a.totalProfit);
+  // Sorted by count (biggest first) — the number of sales is what "biggest
+  // at top" means for these tables (a brand with more sales at a lower
+  // margin should still outrank one with fewer sales but a lucky big
+  // profit), not total profit.
+  return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }
 
 export type ProfitPerPairBucket = {
