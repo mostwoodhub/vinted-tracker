@@ -41,3 +41,14 @@ export const VINTED_COUNTRY_PLATFORMS: Record<
     currency: "EUR",
   },
 };
+
+// Every country reachable through either DE or IT — their VAT rates in
+// country-vat-rates.ts are all guesses (defaulted to Polska's, no
+// historical data exists yet for any of them), so a sale into one of
+// these defaults to no VAT / no income tax rather than presenting a
+// specific rate that's actually unverified. Per the user — real tax
+// handling for these markets to be sorted out separately, not guessed at
+// per-sale in the meantime.
+export const VINTED_UNVERIFIED_VAT_COUNTRIES = new Set(
+  Object.values(VINTED_COUNTRY_PLATFORMS).flatMap((p) => p.countries)
+);

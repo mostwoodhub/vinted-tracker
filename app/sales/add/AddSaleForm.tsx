@@ -20,7 +20,7 @@ import {
   calcVatAmount,
 } from "@/lib/sales-calc";
 import { COUNTRY_VAT_RATE_MODE, COUNTRIES } from "@/lib/country-vat-rates";
-import { VINTED_COUNTRY_PLATFORMS } from "@/lib/vinted-platform-accounts";
+import { VINTED_COUNTRY_PLATFORMS, VINTED_UNVERIFIED_VAT_COUNTRIES } from "@/lib/vinted-platform-accounts";
 import { formatPln } from "@/lib/format";
 import { FileDropzone } from "@/app/FileDropzone";
 import { LabelCropModal } from "@/app/LabelCropModal";
@@ -471,6 +471,17 @@ export function AddSaleForm({
 
   function handleCountryChange(value: string) {
     setCountry(value);
+    // These countries' VAT rates are all unverified guesses (no historical
+    // data exists for any DE/IT-reachable market yet) — default to no
+    // VAT/no income tax rather than presenting a specific rate that hasn't
+    // actually been confirmed. Real tax handling for these markets is a
+    // separate, later decision, not something to guess per-sale.
+    if (VINTED_UNVERIFIED_VAT_COUNTRIES.has(value)) {
+      setVatMode("zero");
+      setVatRate("0");
+      setIncomeTaxApplied(false);
+      return;
+    }
     if (vatMode === "zero") return;
     const fullRate = COUNTRY_VAT_RATE_MODE[value];
     if (fullRate != null) setVatRate(String(fullRate));
