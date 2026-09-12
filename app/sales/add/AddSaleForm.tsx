@@ -7,9 +7,11 @@ import {
   createSale,
   checkSoldNumber,
   checkItemsByLegacyNumber,
+  getPreviewExchangeRate,
   type AddSaleState,
   type SoldNumberCheckResult,
   type ItemsByLegacyNumberResult,
+  type PreviewExchangeRateResult,
 } from "./actions";
 import { updateSale } from "@/app/sales/actions";
 import {
@@ -387,6 +389,34 @@ export function AddSaleForm({
     initialSale?.income_tax_applied ?? true
   );
 
+  const [saleDate, setSaleDate] = useState(initialSale?.sale_date ?? todayIso());
+  const [accountName, setAccountName] = useState(initialSale?.account_name ?? "");
+
+  // Live "what will this actually convert to" feedback — every price/cost
+  // field below is otherwise just plain numbers with no sign the selected
+  // account is even non-PLN, so a EUR sale looked completely unaffected
+  // until it was actually saved. Debounced the same way checkLegacyNumber
+  // etc. already are; a failed/slow lookup just means no preview, not an
+  // error — the real, authoritative conversion still happens server-side
+  // in createSale/updateSale regardless of whether this resolved in time.
+  const [previewRate, setPreviewRate] = useState<PreviewExchangeRateResult>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (!accountName || !saleDate) {
+        if (!cancelled) setPreviewRate(null);
+        return;
+      }
+      getPreviewExchangeRate(accountName, saleDate).then((result) => {
+        if (!cancelled) setPreviewRate(result);
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [accountName, saleDate]);
+
   const isMultiPair = quantity > 1;
 
   function handleQuantityChange(raw: string) {
@@ -521,19 +551,26 @@ export function AddSaleForm({
     : toNumber(singleCost);
 
   const calc = useMemo(() => {
-    const fee = toNumber(feeAmount);
+    // Every field above is typed in the account's own currency (EUR for a
+    // non-PLN account) — same conversion the server applies in
+    // applySaleCurrencyConversion, just so this preview isn't silently
+    // wrong for a EUR sale while the real save is correct.
+    const rate = previewRate?.rate ?? 1;
+    const priceInPln = sumPrice * rate;
+    const costInPln = sumCost * rate;
+    const fee = toNumber(feeAmount) * rate;
     const vat = toNumber(vatRate);
-    const vatAmount = calcVatAmount(sumPrice, vat);
-    const incomeTaxAmount = calcIncomeTaxAmount(sumPrice, incomeTaxApplied);
+    const vatAmount = calcVatAmount(priceInPln, vat);
+    const incomeTaxAmount = calcIncomeTaxAmount(priceInPln, incomeTaxApplied);
     const netProfit = calcNetProfit({
-      salePrice: sumPrice,
-      costPrice: sumCost,
+      salePrice: priceInPln,
+      costPrice: costInPln,
       feeAmount: fee,
       vatAmount,
       incomeTaxAmount,
     });
-    return { feeAmount: fee, vatAmount, incomeTaxAmount, netProfit };
-  }, [sumPrice, sumCost, feeAmount, vatRate, incomeTaxApplied]);
+    return { feeAmount: fee, vatAmount, incomeTaxAmount, netProfit, priceInPln };
+  }, [sumPrice, sumCost, feeAmount, vatRate, incomeTaxApplied, previewRate]);
 
   const itemsJson = useMemo(
     () =>
@@ -581,7 +618,8 @@ export function AddSaleForm({
             type="date"
             name="saleDate"
             required
-            defaultValue={initialSale?.sale_date ?? todayIso()}
+            value={saleDate}
+            onChange={(e) => setSaleDate(e.target.value)}
             className={inputClass}
           />
         </label>
@@ -898,7 +936,8 @@ export function AddSaleForm({
           <span className={labelClass}>Konto</span>
           <select
             name="accountName"
-            defaultValue={initialSale?.account_name ?? ""}
+            value={accountName}
+            onChange={(e) => setAccountName(e.target.value)}
             className={inputClass}
           >
             <option value="">— wybierz —</option>
@@ -908,6 +947,11 @@ export function AddSaleForm({
               </option>
             ))}
           </select>
+          {previewRate && (
+            <p className={`text-xs ${mutedTextClass}`}>
+              Konto w {previewRate.currency} — kurs {previewRate.rate.toFixed(4)} zł (NBP −3%)
+            </p>
+          )}
         </label>
 
         <label className="flex flex-col gap-1.5 sm:col-span-2">
@@ -1004,6 +1048,11 @@ export function AddSaleForm({
         >
           {formatPln(calc.netProfit)}
         </p>
+        {previewRate && (
+          <p className={`mt-1 text-xs ${mutedTextClass}`}>
+            Cena {sumPrice.toFixed(2)} {previewRate.currency} → {formatPln(calc.priceInPln)} po kursie
+          </p>
+        )}
       </div>
 
       {state.status === "error" && (

@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { ALL_ROLES, checkRole, getEffectiveRoles } from "@/lib/auth";
 import { parseSaleFormFields } from "@/lib/sales-form-parse";
 import { applySaleCurrencyConversion } from "@/lib/sale-currency";
+import { getPayoutRateToPln } from "@/lib/nbp-exchange-rate";
 import { uploadSaleFile, uploadSalePhotos } from "@/lib/sales-upload";
 import { markItemSoldByShoeId } from "@/lib/item-sale-link";
 import { sendTelegramMessage } from "@/lib/telegram";
@@ -149,6 +150,42 @@ export async function checkItemsByLegacyNumber(legacyNumber: string): Promise<It
   );
 
   return { ambiguous: true, candidates };
+}
+
+export type PreviewExchangeRateResult = { currency: string; rate: number } | null;
+
+// Live "what will this actually convert to" feedback for the add-sale form
+// — the account's own currency was invisible in the "Zysk netto (podgląd)"
+// preview otherwise (it's computed client-side, with no way to know the
+// account is EUR or fetch an NBP rate on its own), so a EUR sale looked
+// completely unaffected until the sale was actually saved. Debounced from
+// the client the same way checkLegacyNumber etc. already are.
+export async function getPreviewExchangeRate(
+  accountName: string,
+  saleDate: string
+): Promise<PreviewExchangeRateResult> {
+  const access = await checkRole(...ALL_ROLES);
+  if (!access.ok) return null;
+
+  const trimmedAccount = accountName.trim();
+  const trimmedDate = saleDate.trim();
+  if (!trimmedAccount || !trimmedDate) return null;
+
+  const { data: account } = await supabaseAdmin
+    .from("sales_accounts_archive")
+    .select("currency")
+    .eq("name", trimmedAccount)
+    .maybeSingle();
+
+  const currency = account?.currency?.trim() || "PLN";
+  if (currency === "PLN") return null;
+
+  try {
+    const rate = await getPayoutRateToPln(currency, trimmedDate);
+    return { currency, rate };
+  } catch {
+    return null; // preview only — a failed lookup here shouldn't block typing
+  }
 }
 
 export async function createSale(
