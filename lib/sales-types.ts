@@ -39,6 +39,15 @@ export type SaleRow = {
   receipt_url: string | null;
   legacy_user_id: string | null;
   items: SaleItem[] | null;
+  // Set only for sales made on a non-PLN account (e.g. the DE/IT Vinted
+  // accounts) — sale_price/cost_price/fee_amount above are always the
+  // converted PLN amounts; these three are the original figures + the NBP
+  // payout rate used, kept for reference and to re-populate the edit form
+  // in the currency the employee actually thinks in.
+  original_currency: string | null;
+  original_sale_price: number | null;
+  original_cost_price: number | null;
+  exchange_rate: number | null;
 };
 
 export const SALE_EXPORT_COLUMNS = "*";

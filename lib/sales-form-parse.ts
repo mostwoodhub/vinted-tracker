@@ -1,7 +1,7 @@
 import "server-only";
 import { calcIncomeTaxAmount, calcNetProfit, calcVatAmount } from "@/lib/sales-calc";
 
-function parseNumber(value: FormDataEntryValue | null, fallback = 0): number {
+export function parseNumber(value: FormDataEntryValue | null, fallback = 0): number {
   const str = String(value ?? "").trim().replace(",", ".");
   if (!str) return fallback;
   const n = Number(str);

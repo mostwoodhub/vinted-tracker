@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { ALL_ROLES, checkRole, getEffectiveRoles } from "@/lib/auth";
 import { parseSaleFormFields } from "@/lib/sales-form-parse";
+import { applySaleCurrencyConversion } from "@/lib/sale-currency";
 import { uploadSaleFile, uploadSalePhotos } from "@/lib/sales-upload";
 import { markItemSoldByShoeId } from "@/lib/item-sale-link";
 import { sendTelegramMessage } from "@/lib/telegram";
@@ -160,6 +161,13 @@ export async function createSale(
   if (!access.ok) return { status: "error", error: access.error };
   const isAdmin = getEffectiveRoles(access.employee).has("admin");
 
+  let currencyAudit;
+  try {
+    currencyAudit = await applySaleCurrencyConversion(formData);
+  } catch (err) {
+    return { status: "error", error: err instanceof Error ? err.message : "Nie udało się przeliczyć waluty" };
+  }
+
   const parsed = parseSaleFormFields(formData);
   if ("error" in parsed) return { status: "error", error: parsed.error };
 
@@ -216,6 +224,7 @@ export async function createSale(
     label_filename: labelResult.filename,
     label_url2: label2Result.url,
     label_filename2: label2Result.filename,
+    ...(currencyAudit ?? {}),
   });
 
   if (error) {

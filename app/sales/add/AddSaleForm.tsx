@@ -318,11 +318,16 @@ export function AddSaleForm({
   const [singleResolvedItemId, setSingleResolvedItemId] = useState<string | null>(
     !isInitialMultiPair ? initialItems?.[0]?.itemId ?? null : null
   );
+  // Editing shows (and re-submits) the ORIGINAL currency amount, not the
+  // converted PLN one stored in sale_price/cost_price/fee_amount — an
+  // employee fixing a EUR sale thinks in EUR, and re-submitting the already-
+  // converted PLN figure would convert it a second time. original_sale_price
+  // etc. are only ever set for a non-PLN account (see applySaleCurrencyConversion).
   const [singlePrice, setSinglePrice] = useState(
-    !isInitialMultiPair ? numToInput(initialSale?.sale_price) : ""
+    !isInitialMultiPair ? numToInput(initialSale?.original_sale_price ?? initialSale?.sale_price) : ""
   );
   const [singleCost, setSingleCost] = useState(
-    !isInitialMultiPair ? numToInput(initialSale?.cost_price) : ""
+    !isInitialMultiPair ? numToInput(initialSale?.original_cost_price ?? initialSale?.cost_price) : ""
   );
   const [brand, setBrand] = useState(initialSale?.brand ?? "");
 
@@ -369,7 +374,15 @@ export function AddSaleForm({
   const [vatRate, setVatRate] = useState(
     numToInput(initialSale?.vat_rate) || String(COUNTRY_VAT_RATE_MODE[DEFAULT_COUNTRY])
   );
-  const [feeAmount, setFeeAmount] = useState(numToInput(initialSale?.fee_amount) || "0");
+  // fee_amount has no dedicated "original" column — derived back from the
+  // stored PLN amount and the rate used, same reasoning as price/cost above.
+  const [feeAmount, setFeeAmount] = useState(
+    numToInput(
+      initialSale?.exchange_rate
+        ? (initialSale.fee_amount ?? 0) / initialSale.exchange_rate
+        : initialSale?.fee_amount
+    ) || "0"
+  );
   const [incomeTaxApplied, setIncomeTaxApplied] = useState(
     initialSale?.income_tax_applied ?? true
   );

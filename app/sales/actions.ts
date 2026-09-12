@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRole } from "@/lib/auth";
 import { parseSaleFormFields } from "@/lib/sales-form-parse";
+import { applySaleCurrencyConversion } from "@/lib/sale-currency";
 import { uploadSaleFile, uploadSalePhotos } from "@/lib/sales-upload";
 import type { AddSaleState } from "./add/actions";
 
@@ -65,6 +66,13 @@ export async function updateSale(
 ): Promise<AddSaleState> {
   const access = await checkRole("admin");
   if (!access.ok) return { status: "error", error: access.error };
+
+  let currencyAudit;
+  try {
+    currencyAudit = await applySaleCurrencyConversion(formData);
+  } catch (err) {
+    return { status: "error", error: err instanceof Error ? err.message : "Nie udało się przeliczyć waluty" };
+  }
 
   const parsed = parseSaleFormFields(formData);
   if ("error" in parsed) return { status: "error", error: parsed.error };
@@ -132,6 +140,13 @@ export async function updateSale(
       photo_url: photoUrls[0] ?? null,
       photo_urls: photoUrls,
       items: parsed.items,
+      // Explicit nulls (not a conditional spread) so editing a sale onto a
+      // PLN account — or off one — clears stale currency-audit data from a
+      // previous edit rather than leaving it stuck from before.
+      original_currency: currencyAudit?.original_currency ?? null,
+      original_sale_price: currencyAudit?.original_sale_price ?? null,
+      original_cost_price: currencyAudit?.original_cost_price ?? null,
+      exchange_rate: currencyAudit?.exchange_rate ?? null,
       label_url: label1Result.url,
       label_filename: label1Result.filename,
       label_url2: label2Result.url,

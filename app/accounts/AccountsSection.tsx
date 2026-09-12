@@ -26,8 +26,11 @@ const initialState: AccountActionState = { status: "idle" };
 export type AccountRow = {
   id: string;
   name: string;
+  currency: string;
   saleCount: number;
 };
+
+const CURRENCIES = ["PLN", "EUR"];
 
 function SaveButton() {
   const { pending } = useFormStatus();
@@ -109,6 +112,16 @@ function AccountCard({ account }: { account: AccountRow }) {
             className={`${inputClass} max-w-xs`}
           />
         </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Waluta sprzedaży</span>
+          <select name="currency" defaultValue={account.currency} className={`${inputClass} max-w-xs`}>
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
         {renameState.status === "error" && (
           <p className={errorTextClass} role="alert">
             {renameState.error}
@@ -127,7 +140,14 @@ function AccountCard({ account }: { account: AccountRow }) {
   return (
     <div className={`flex items-center gap-[var(--space-md)] ${cardClass}`}>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="font-bold text-[var(--color-text)]">{account.name}</span>
+        <span className="font-bold text-[var(--color-text)]">
+          {account.name}
+          {account.currency !== "PLN" && (
+            <span className="ml-2 rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-xs font-medium text-[var(--color-text)]">
+              {account.currency}
+            </span>
+          )}
+        </span>
         <p className={`truncate text-sm ${mutedTextClass}`}>
           {account.saleCount} {account.saleCount === 1 ? "sprzedaż" : "sprzedaży"}
         </p>
@@ -208,6 +228,13 @@ function AddAccountForm() {
           placeholder="np. Konto 7"
           className={`${inputClass} max-w-xs`}
         />
+        <select name="currency" defaultValue="PLN" className={`${inputClass} max-w-[7rem]`}>
+          {CURRENCIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
         <AddButton />
       </div>
       {createState.status === "error" && (

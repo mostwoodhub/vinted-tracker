@@ -39,6 +39,10 @@ function makeSale(overrides: Partial<SaleRow>): SaleRow {
     receipt_url: null,
     legacy_user_id: null,
     items: null,
+    original_currency: null,
+    original_sale_price: null,
+    original_cost_price: null,
+    exchange_rate: null,
     ...overrides,
   };
 }

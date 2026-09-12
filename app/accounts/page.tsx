@@ -17,7 +17,7 @@ export default async function AccountsPage() {
   const [{ data: accountsRaw }, sales] = await Promise.all([
     supabaseAdmin
       .from("sales_accounts_archive")
-      .select("id, name, sort_order")
+      .select("id, name, currency, sort_order")
       .order("sort_order", { ascending: true }),
     fetchAllRows<{ account_name: string | null }>((from, to) =>
       supabaseAdmin
@@ -37,6 +37,7 @@ export default async function AccountsPage() {
   const accounts: AccountRow[] = (accountsRaw ?? []).map((a) => ({
     id: a.id,
     name: a.name,
+    currency: a.currency ?? "PLN",
     saleCount: countByName.get(a.name) ?? 0,
   }));
 

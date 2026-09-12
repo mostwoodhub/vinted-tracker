@@ -26,6 +26,7 @@ export async function createAccount(
 
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { status: "error", error: "Podaj nazwę konta" };
+  const currency = String(formData.get("currency") ?? "PLN").trim() || "PLN";
 
   const { data: existing } = await supabaseAdmin
     .from("sales_accounts_archive")
@@ -45,7 +46,7 @@ export async function createAccount(
   // sales_accounts_archive.id has no DB default, must be supplied explicitly.
   const { error } = await supabaseAdmin
     .from("sales_accounts_archive")
-    .insert({ id: randomUUID(), name, sort_order: nextSortOrder });
+    .insert({ id: randomUUID(), name, currency, sort_order: nextSortOrder });
 
   if (error) return { status: "error", error: error.message };
 
@@ -62,6 +63,7 @@ export async function renameAccount(
 
   const accountId = String(formData.get("accountId") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
+  const currency = String(formData.get("currency") ?? "PLN").trim() || "PLN";
   if (!accountId) return { status: "error", error: "Brak konta" };
   if (!name) return { status: "error", error: "Podaj nazwę konta" };
 
@@ -83,7 +85,7 @@ export async function renameAccount(
 
   const { error } = await supabaseAdmin
     .from("sales_accounts_archive")
-    .update({ name })
+    .update({ name, currency })
     .eq("id", accountId);
   if (error) return { status: "error", error: error.message };
 
