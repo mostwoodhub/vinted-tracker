@@ -320,16 +320,18 @@ export function AddSaleForm({
   const [singleResolvedItemId, setSingleResolvedItemId] = useState<string | null>(
     !isInitialMultiPair ? initialItems?.[0]?.itemId ?? null : null
   );
-  // Editing shows (and re-submits) the ORIGINAL currency amount, not the
-  // converted PLN one stored in sale_price/cost_price/fee_amount — an
-  // employee fixing a EUR sale thinks in EUR, and re-submitting the already-
-  // converted PLN figure would convert it a second time. original_sale_price
-  // etc. are only ever set for a non-PLN account (see applySaleCurrencyConversion).
+  // Editing shows (and re-submits) the ORIGINAL sale-price currency amount,
+  // not the converted PLN one stored in sale_price/fee_amount — an employee
+  // fixing a EUR sale thinks in EUR, and re-submitting the already-converted
+  // PLN figure would convert it a second time. original_sale_price is only
+  // ever set for a non-PLN account (see applySaleCurrencyConversion).
+  // cost_price is never converted in the first place (stock is always
+  // bought in PLN) — shown and re-submitted as-is either way.
   const [singlePrice, setSinglePrice] = useState(
     !isInitialMultiPair ? numToInput(initialSale?.original_sale_price ?? initialSale?.sale_price) : ""
   );
   const [singleCost, setSingleCost] = useState(
-    !isInitialMultiPair ? numToInput(initialSale?.original_cost_price ?? initialSale?.cost_price) : ""
+    !isInitialMultiPair ? numToInput(initialSale?.cost_price) : ""
   );
   const [brand, setBrand] = useState(initialSale?.brand ?? "");
 
@@ -551,20 +553,21 @@ export function AddSaleForm({
     : toNumber(singleCost);
 
   const calc = useMemo(() => {
-    // Every field above is typed in the account's own currency (EUR for a
-    // non-PLN account) — same conversion the server applies in
-    // applySaleCurrencyConversion, just so this preview isn't silently
-    // wrong for a EUR sale while the real save is correct.
+    // Sale price and fee are typed in the account's own currency (EUR for a
+    // non-PLN account) and converted here — same conversion the server
+    // applies in applySaleCurrencyConversion, just so this preview isn't
+    // silently wrong for a EUR sale while the real save is correct. Cost
+    // price is never converted: stock is always bought in PLN regardless of
+    // which account it's eventually sold through.
     const rate = previewRate?.rate ?? 1;
     const priceInPln = sumPrice * rate;
-    const costInPln = sumCost * rate;
     const fee = toNumber(feeAmount) * rate;
     const vat = toNumber(vatRate);
     const vatAmount = calcVatAmount(priceInPln, vat);
     const incomeTaxAmount = calcIncomeTaxAmount(priceInPln, incomeTaxApplied);
     const netProfit = calcNetProfit({
       salePrice: priceInPln,
-      costPrice: costInPln,
+      costPrice: sumCost,
       feeAmount: fee,
       vatAmount,
       incomeTaxAmount,
@@ -684,7 +687,7 @@ export function AddSaleForm({
             </datalist>
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className={labelClass}>Koszt</span>
+            <span className={labelClass}>Koszt (zł)</span>
             <input
               type="number"
               name="costPrice"
@@ -696,7 +699,7 @@ export function AddSaleForm({
             />
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className={labelClass}>Cena</span>
+            <span className={labelClass}>Cena{previewRate ? ` (${previewRate.currency})` : " (zł)"}</span>
             <input
               type="number"
               name="salePrice"
@@ -955,7 +958,7 @@ export function AddSaleForm({
         </label>
 
         <label className="flex flex-col gap-1.5 sm:col-span-2">
-          <span className={labelClass}>Prowizja (zł)</span>
+          <span className={labelClass}>Prowizja{previewRate ? ` (${previewRate.currency})` : " (zł)"}</span>
           <input
             type="number"
             name="feeAmount"

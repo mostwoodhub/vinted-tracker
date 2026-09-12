@@ -6,12 +6,14 @@ import { getPayoutRateToPln } from "@/lib/nbp-exchange-rate";
 export type SaleCurrencyAudit = {
   original_currency: string;
   original_sale_price: number;
-  original_cost_price: number | null;
   exchange_rate: number;
 } | null;
 
-// Mutates formData's costPrice/salePrice/feeAmount in place, converting them
-// from the selling account's own currency into PLN — every downstream
+// Mutates formData's salePrice/feeAmount in place, converting them from the
+// selling account's own currency into PLN. costPrice is deliberately left
+// untouched — stock is always bought in PLN regardless of which account it
+// ends up sold through, only the sale side (and Vinted's own fee, charged
+// in the same currency as the sale) is ever in EUR. Every downstream
 // calculation (fee %, VAT, income tax, net profit, all of statistics)
 // already assumes PLN and stays untouched otherwise. feePercent is derived
 // from feeAmount/salePrice, so converting both by the same rate keeps that
@@ -37,19 +39,16 @@ export async function applySaleCurrencyConversion(formData: FormData): Promise<S
   if (!saleDate) return null; // parseSaleFormFields will reject the missing date itself
 
   const originalSalePrice = parseNumber(formData.get("salePrice"));
-  const originalCostPrice = formData.get("costPrice") != null ? parseNumber(formData.get("costPrice")) : null;
   const originalFeeAmount = parseNumber(formData.get("feeAmount"));
 
   const rate = await getPayoutRateToPln(currency, saleDate);
 
   formData.set("salePrice", String(originalSalePrice * rate));
-  if (originalCostPrice != null) formData.set("costPrice", String(originalCostPrice * rate));
   formData.set("feeAmount", String(originalFeeAmount * rate));
 
   return {
     original_currency: currency,
     original_sale_price: originalSalePrice,
-    original_cost_price: originalCostPrice,
     exchange_rate: rate,
   };
 }

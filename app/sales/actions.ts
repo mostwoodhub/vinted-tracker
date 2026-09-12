@@ -142,10 +142,12 @@ export async function updateSale(
       items: parsed.items,
       // Explicit nulls (not a conditional spread) so editing a sale onto a
       // PLN account — or off one — clears stale currency-audit data from a
-      // previous edit rather than leaving it stuck from before.
+      // previous edit rather than leaving it stuck from before. cost_price
+      // is always PLN as typed (stock is bought in PLN regardless of
+      // account) — original_cost_price is never set, only kept as a column
+      // for anything historical.
       original_currency: currencyAudit?.original_currency ?? null,
       original_sale_price: currencyAudit?.original_sale_price ?? null,
-      original_cost_price: currencyAudit?.original_cost_price ?? null,
       exchange_rate: currencyAudit?.exchange_rate ?? null,
       label_url: label1Result.url,
       label_filename: label1Result.filename,
