@@ -375,6 +375,17 @@ export function AddSaleForm({
   }, [accountNames, initialSale?.account_name]);
 
   const [country, setCountry] = useState(initialSale?.country ?? DEFAULT_COUNTRY);
+  // A Vinted DE/IT sale's buyer is overwhelmingly domestic — the full
+  // Polska-derived country list (built from a Polish account's own
+  // historical cross-border buyers, see country-vat-rates.ts) doesn't
+  // apply there. Narrowed to just that platform's own country; the
+  // current value stays selectable even if it's since fallen outside that
+  // set, same reasoning as accountOptions above.
+  const countryOptions = useMemo(() => {
+    const mapped = VINTED_COUNTRY_PLATFORMS[platform];
+    if (!mapped) return COUNTRIES;
+    return country && country !== mapped.country ? [mapped.country, country] : [mapped.country];
+  }, [platform, country]);
   const [vatMode, setVatMode] = useState(initialSale?.vat_mode ?? "full");
   const [vatRate, setVatRate] = useState(
     numToInput(initialSale?.vat_rate) || String(COUNTRY_VAT_RATE_MODE[DEFAULT_COUNTRY])
@@ -941,7 +952,7 @@ export function AddSaleForm({
             onChange={(e) => handleCountryChange(e.target.value)}
             className={inputClass}
           >
-            {COUNTRIES.map((c) => (
+            {countryOptions.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
