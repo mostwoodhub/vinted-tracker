@@ -384,7 +384,7 @@ export function AddSaleForm({
   const countryOptions = useMemo(() => {
     const mapped = VINTED_COUNTRY_PLATFORMS[platform];
     if (!mapped) return COUNTRIES;
-    return country && country !== mapped.country ? [mapped.country, country] : [mapped.country];
+    return country && !mapped.countries.includes(country) ? [...mapped.countries, country] : mapped.countries;
   }, [platform, country]);
   const [vatMode, setVatMode] = useState(initialSale?.vat_mode ?? "full");
   const [vatRate, setVatRate] = useState(
