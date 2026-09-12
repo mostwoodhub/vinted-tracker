@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { ALL_ROLES, checkRole, getEffectiveRoles } from "@/lib/auth";
 import { parseSaleFormFields } from "@/lib/sales-form-parse";
-import { applySaleCurrencyConversion } from "@/lib/sale-currency";
+import { applySaleCurrencyConversion, resolveSaleCurrency } from "@/lib/sale-currency";
 import { getPayoutRateToPln } from "@/lib/nbp-exchange-rate";
 import { uploadSaleFile, uploadSalePhotos } from "@/lib/sales-upload";
 import { markItemSoldByShoeId } from "@/lib/item-sale-link";
@@ -161,23 +161,17 @@ export type PreviewExchangeRateResult = { currency: string; rate: number } | nul
 // completely unaffected until the sale was actually saved. Debounced from
 // the client the same way checkLegacyNumber etc. already are.
 export async function getPreviewExchangeRate(
+  platform: string,
   accountName: string,
   saleDate: string
 ): Promise<PreviewExchangeRateResult> {
   const access = await checkRole(...ALL_ROLES);
   if (!access.ok) return null;
 
-  const trimmedAccount = accountName.trim();
   const trimmedDate = saleDate.trim();
-  if (!trimmedAccount || !trimmedDate) return null;
+  if (!trimmedDate) return null;
 
-  const { data: account } = await supabaseAdmin
-    .from("sales_accounts_archive")
-    .select("currency")
-    .eq("name", trimmedAccount)
-    .maybeSingle();
-
-  const currency = account?.currency?.trim() || "PLN";
+  const currency = await resolveSaleCurrency(platform.trim(), accountName.trim());
   if (currency === "PLN") return null;
 
   try {

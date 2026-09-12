@@ -2,6 +2,28 @@ import "server-only";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { parseNumber } from "@/lib/sales-form-parse";
 import { getPayoutRateToPln } from "@/lib/nbp-exchange-rate";
+import { VINTED_COUNTRY_PLATFORMS } from "@/lib/vinted-platform-accounts";
+
+// "Vinted DE"/"Vinted IT" carry their own known currency regardless of
+// what's set on the selected account's own `currency` column — the
+// employee picking that platform is the signal, not the account (an
+// account like "Vintusss - V" stays PLN in sales_accounts_archive since
+// it's also used for plain PLN sales; only the DE/IT platform choice
+// means "this particular sale is in EUR"). Falls back to the account's
+// own currency for anything else (any future non-PLN account with no
+// dedicated platform shortcut).
+export async function resolveSaleCurrency(platform: string, accountName: string): Promise<string> {
+  const mapped = VINTED_COUNTRY_PLATFORMS[platform];
+  if (mapped) return mapped.currency;
+
+  if (!accountName) return "PLN";
+  const { data: account } = await supabaseAdmin
+    .from("sales_accounts_archive")
+    .select("currency")
+    .eq("name", accountName)
+    .maybeSingle();
+  return account?.currency?.trim() || "PLN";
+}
 
 export type SaleCurrencyAudit = {
   original_currency: string;
@@ -23,16 +45,10 @@ export type SaleCurrencyAudit = {
 // the account is already PLN (the overwhelming majority) — callers should
 // spread the result into their insert/update only when it's non-null.
 export async function applySaleCurrencyConversion(formData: FormData): Promise<SaleCurrencyAudit> {
+  const platform = String(formData.get("platform") ?? "").trim();
   const accountName = String(formData.get("accountName") ?? "").trim();
-  if (!accountName) return null;
 
-  const { data: account } = await supabaseAdmin
-    .from("sales_accounts_archive")
-    .select("currency")
-    .eq("name", accountName)
-    .maybeSingle();
-
-  const currency = account?.currency?.trim() || "PLN";
+  const currency = await resolveSaleCurrency(platform, accountName);
   if (currency === "PLN") return null;
 
   const saleDate = String(formData.get("saleDate") ?? "").trim();

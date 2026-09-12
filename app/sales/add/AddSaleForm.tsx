@@ -20,6 +20,7 @@ import {
   calcVatAmount,
 } from "@/lib/sales-calc";
 import { COUNTRY_VAT_RATE_MODE, COUNTRIES } from "@/lib/country-vat-rates";
+import { VINTED_COUNTRY_PLATFORMS } from "@/lib/vinted-platform-accounts";
 import { formatPln } from "@/lib/format";
 import { FileDropzone } from "@/app/FileDropzone";
 import { LabelCropModal } from "@/app/LabelCropModal";
@@ -36,7 +37,7 @@ import {
   pillClass,
 } from "@/lib/ui-classes";
 
-const PLATFORMS = ["Vinted", "Allegro", "OLX"];
+const PLATFORMS = ["Vinted", "Vinted DE", "Vinted IT", "Allegro", "OLX"];
 const VAT_MODES: { value: string; label: string }[] = [
   { value: "full", label: "Pełny" },
   { value: "zero", label: "Zerowy" },
@@ -409,7 +410,7 @@ export function AddSaleForm({
         if (!cancelled) setPreviewRate(null);
         return;
       }
-      getPreviewExchangeRate(accountName, saleDate).then((result) => {
+      getPreviewExchangeRate(platform, accountName, saleDate).then((result) => {
         if (!cancelled) setPreviewRate(result);
       });
     }, 300);
@@ -417,7 +418,7 @@ export function AddSaleForm({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [accountName, saleDate]);
+  }, [platform, accountName, saleDate]);
 
   const isMultiPair = quantity > 1;
 
@@ -442,6 +443,19 @@ export function AddSaleForm({
     setPairs((prev) =>
       prev.map((pair, i) => (i === index ? { ...pair, resolvedItemId: itemId } : pair))
     );
+  }
+
+  // "Vinted DE"/"Vinted IT" carry their own known country + account, so
+  // picking one is the one decision that sets both — otherwise the
+  // employee would separately have to change Kraj (for the VAT preset) and
+  // Konto (to the right foreign account) on top of the platform itself.
+  function handlePlatformChange(value: string) {
+    setPlatform(value);
+    const mapped = VINTED_COUNTRY_PLATFORMS[value];
+    if (mapped) {
+      handleCountryChange(mapped.country);
+      setAccountName(mapped.accountName);
+    }
   }
 
   function handleCountryChange(value: string) {
@@ -604,7 +618,7 @@ export function AddSaleForm({
             name="platform"
             required
             value={platform}
-            onChange={(e) => setPlatform(e.target.value)}
+            onChange={(e) => handlePlatformChange(e.target.value)}
             className={inputClass}
           >
             {PLATFORMS.map((p) => (

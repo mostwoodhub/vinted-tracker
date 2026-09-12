@@ -15,6 +15,11 @@ export const COUNTRY_VAT_RATE_MODE: Record<string, number> = {
   Finlandia: 25.5,
   Szwecja: 25,
   Dania: 25,
+  // No historical sales exist under these two yet (the DE/IT Vinted
+  // accounts are new) — defaulted to the same rate as Polska per the user,
+  // editable per-sale like every other country here.
+  Niemcy: 23,
+  Włochy: 23,
 };
 
 export const COUNTRIES = Object.keys(COUNTRY_VAT_RATE_MODE);
