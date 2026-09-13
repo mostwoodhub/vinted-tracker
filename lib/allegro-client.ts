@@ -345,7 +345,7 @@ function findDictionaryOption(
   return dictionary.find((o) => o.value.trim().toLowerCase() === normalized) ?? null;
 }
 
-function mapConditionToAllegroStan(condition: string | null): "Nowy" | "Używany" {
+export function mapConditionToAllegroStan(condition: string | null): "Nowy" | "Używany" {
   return condition === "Nowe" ? "Nowy" : "Używany";
 }
 
@@ -502,6 +502,8 @@ export type AllegroOfferPayload = {
   productParameters: AllegroParamValue[];
   images: string[];
   active: boolean;
+  // Drives marketedBeforeGPSRObligation below — see its own comment.
+  isUsed: boolean;
 };
 
 export type AllegroOffer = { id: string; status: string; url: string };
@@ -520,14 +522,20 @@ export async function createAllegroOffer(
     body: JSON.stringify({
       productSet: [
         {
-          // Every item this business sells is second-hand — declaring this
-          // is what lets Allegro skip the GPSR responsibleProducer /
-          // safetyInformation requirements it otherwise demands for every
-          // new product proposal. Verified live: without this flag, create
-          // still succeeds (201) but validation.errors flags both as
-          // missing, which blocks going ACTIVE; with it, validation.errors
-          // comes back empty for a "Używany" item.
-          marketedBeforeGPSRObligation: true,
+          // Declaring this is what lets Allegro skip the GPSR
+          // responsibleProducer / safetyInformation requirements it
+          // otherwise demands for every new product proposal — but Allegro
+          // only accepts the declaration for a "Używany" item (verified
+          // live: set on a "Nowy" item, the create call itself is rejected
+          // outright, "dozwolone tylko, gdy wybrane są konkretne wartości
+          // parametru Stan"). Most stock here is second-hand, but not all
+          // of it (e.g. "powystawowe" showroom units are still "Nowe") —
+          // for those, this stays unset: create still succeeds (201) but
+          // activation fails on missing responsibleProducer/
+          // safetyInformation, which the caller already handles as
+          // "created, needs attention" rather than a hard failure — the
+          // employee finishes GPSR producer info on Allegro's own site.
+          marketedBeforeGPSRObligation: payload.isUsed,
           product: {
             name: payload.title,
             category: { id: payload.categoryId },

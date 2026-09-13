@@ -29,6 +29,7 @@ import {
   activateAllegroOffer,
   getAllegroOffer,
   endAllegroOffer,
+  mapConditionToAllegroStan,
   ALLEGRO_MAX_PHOTOS,
   type AllegroManualParam,
 } from "@/lib/allegro-client";
@@ -573,6 +574,7 @@ async function attemptPublishAllegroOffer(
     productParameters: built.data.productParameters,
     images: uploadedImages,
     active: true,
+    isUsed: mapConditionToAllegroStan(item.condition) === "Używany",
   });
   if (!offer.ok) return { status: "error", error: offer.error };
 
