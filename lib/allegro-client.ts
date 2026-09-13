@@ -512,6 +512,36 @@ function allegroOfferUrl(id: string): string {
   return `https://allegro.pl/oferta/${id}`;
 }
 
+// Generic GPSR (Regulation (EU) 2023/988) safety notice for men's/women's
+// footwear, supplied by the user — declared for every "Nowy" item since
+// Allegro rejected NO_SAFETY_INFORMATION outright for this category
+// ("Użycie opcji 'Produkt nie zawiera informacji o bezpieczeństwie' jest
+// niedozwolone", verified live). A real, specific notice for one item
+// (rather than this general one) can still be set by hand on Allegro's own
+// site afterward if ever needed.
+const FOOTWEAR_SAFETY_INFO_TEXT = `Informacje o bezpieczeństwie
+Lista ostrzeżeń dotyczących bezpieczeństwa obuwia męskiego oparta o wymagania Rozporządzenia (UE) 2023/988 w sprawie ogólnego bezpieczeństwa produktów (GPSR):
+
+* Upewnij się, że obuwie jest odpowiednio dopasowane do stopy. Zbyt ciasne lub zbyt luźne obuwie może powodować dyskomfort, otarcia, odciski, a nawet problemy zdrowotne stóp.
+
+* Sprawdź, czy obuwie jest stabilne i zapewnia odpowiednie podparcie dla stopy. Niestabilne obuwie może zwiększać ryzyko upadków i kontuzji.
+
+* Zwróć uwagę na materiał, z którego wykonane jest obuwie. Osoby z alergiami powinny unikać materiałów, które mogą powodować podrażnienia skóry.
+
+* Upewnij się, że podeszwa obuwia jest antypoślizgowa, szczególnie jeśli obuwie ma być używane w warunkach zwiększonego ryzyka poślizgnięcia (np. na mokrej nawierzchni, w zimie).
+
+* Regularnie czyść i konserwuj obuwie zgodnie z zaleceniami producenta. Nieodpowiednia pielęgnacja może prowadzić do uszkodzenia obuwia i zmniejszenia jego właściwości ochronnych.
+
+* Nie używaj uszkodzonego obuwia. Pęknięcia, przetarcia lub inne uszkodzenia mogą zmniejszać bezpieczeństwo użytkowania.
+
+* Obuwie specjalistyczne (np. obuwie robocze, sportowe) powinno być używane zgodnie z jego przeznaczeniem. Nie używaj obuwia roboczego do codziennego użytku, jeśli nie jest do tego przystosowane.
+
+* Obuwie z elementami odblaskowymi może poprawić widoczność użytkownika w warunkach słabego oświetlenia.
+
+* W przypadku obuwia z sznurowadłami, upewnij się, że są one odpowiednio zawiązane, aby uniknąć potknięć.
+
+* Nie susz obuwia w bezpośrednim kontakcie z źródłami ciepła (np. kaloryfer, suszarka), ponieważ może to uszkodzić materiał.`;
+
 export async function createAllegroOffer(
   token: string,
   payload: AllegroOfferPayload
@@ -535,13 +565,13 @@ export async function createAllegroOffer(
           // above), Allegro instead requires safetyInformation on the
           // create call itself — verified live, this is a hard rejection
           // of the whole create, not just an activation-time warning as
-          // originally assumed. NO_SAFETY_INFORMATION is a real,
-          // Allegro-defined declarable state (confirmed against their own
-          // product-safety schema), not a workaround — true for ordinary
-          // footwear with nothing specific to disclose. If a real
-          // responsibleProducer/safety notice is ever needed for a
-          // specific item, that's added by hand on Allegro's own site.
-          ...(payload.isUsed ? {} : { safetyInformation: { type: "NO_SAFETY_INFORMATION" } }),
+          // originally assumed. NO_SAFETY_INFORMATION (a real, Allegro-
+          // defined declarable state) was tried first but this category
+          // rejects it outright too — a genuine TEXT notice is required,
+          // see FOOTWEAR_SAFETY_INFO_TEXT above.
+          ...(payload.isUsed
+            ? {}
+            : { safetyInformation: { type: "TEXT", description: FOOTWEAR_SAFETY_INFO_TEXT } }),
           product: {
             name: payload.title,
             category: { id: payload.categoryId },
