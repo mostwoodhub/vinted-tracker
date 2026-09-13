@@ -529,13 +529,19 @@ export async function createAllegroOffer(
           // live: set on a "Nowy" item, the create call itself is rejected
           // outright, "dozwolone tylko, gdy wybrane są konkretne wartości
           // parametru Stan"). Most stock here is second-hand, but not all
-          // of it (e.g. "powystawowe" showroom units are still "Nowe") —
-          // for those, this stays unset: create still succeeds (201) but
-          // activation fails on missing responsibleProducer/
-          // safetyInformation, which the caller already handles as
-          // "created, needs attention" rather than a hard failure — the
-          // employee finishes GPSR producer info on Allegro's own site.
+          // of it (e.g. "powystawowe" showroom units are still "Nowe").
           marketedBeforeGPSRObligation: payload.isUsed,
+          // For a genuinely new item (isUsed false, no GPSR exemption
+          // above), Allegro instead requires safetyInformation on the
+          // create call itself — verified live, this is a hard rejection
+          // of the whole create, not just an activation-time warning as
+          // originally assumed. NO_SAFETY_INFORMATION is a real,
+          // Allegro-defined declarable state (confirmed against their own
+          // product-safety schema), not a workaround — true for ordinary
+          // footwear with nothing specific to disclose. If a real
+          // responsibleProducer/safety notice is ever needed for a
+          // specific item, that's added by hand on Allegro's own site.
+          ...(payload.isUsed ? {} : { safetyInformation: { type: "NO_SAFETY_INFORMATION" } }),
           product: {
             name: payload.title,
             category: { id: payload.categoryId },
