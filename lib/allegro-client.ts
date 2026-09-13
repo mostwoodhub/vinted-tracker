@@ -204,18 +204,41 @@ export async function getAllegroConnectionInfo(): Promise<{ connected: boolean; 
 
 // --- Category & parameter discovery -------------------------------------
 
-// One category match per item, not a fixed constant — resolved live from
-// the listing title, same reasoning as suggestOlxCategory.
-export async function suggestAllegroCategory(token: string, title: string): Promise<AllegroResult<string>> {
+async function matchingCategoriesFor(token: string, name: string): Promise<AllegroResult<string | null>> {
   const url = new URL(`${API_BASE}/sale/matching-categories`);
-  url.searchParams.set("name", title);
+  url.searchParams.set("name", name);
   const res = await fetch(url, { headers: authedHeaders(token, false) });
   const data = await res.json().catch(() => null);
   if (!res.ok) return { ok: false, error: allegroErrorMessage(data, res.status) };
 
   const first = data?.matchingCategories?.[0];
-  if (!first?.id) return { ok: false, error: "Allegro nie zaproponowało żadnej kategorii dla tego tytułu" };
-  return { ok: true, data: String(first.id) };
+  return { ok: true, data: first?.id ? String(first.id) : null };
+}
+
+// One category match per item, not a fixed constant — resolved live from
+// the listing title, same reasoning as suggestOlxCategory.
+//
+// matching-categories is a similar-existing-listings search, not a rule
+// engine — verified live: the full generated title (brand + model +
+// material + color + size + "oryginał") came back with zero matches, but
+// shorter slices of the exact same title matched fine. A long, highly
+// specific title is simply less likely to resemble any real existing
+// Allegro listing closely enough. Retries with just the first 4 words
+// (brand + model + product type, going by this app's own title
+// convention) before giving up — a broader, less precise match beats no
+// category at all.
+export async function suggestAllegroCategory(token: string, title: string): Promise<AllegroResult<string>> {
+  const full = await matchingCategoriesFor(token, title);
+  if (!full.ok) return full;
+  if (full.data) return { ok: true, data: full.data };
+
+  const words = title.trim().split(/\s+/);
+  if (words.length > 4) {
+    const shortened = await matchingCategoriesFor(token, words.slice(0, 4).join(" "));
+    if (shortened.ok && shortened.data) return { ok: true, data: shortened.data };
+  }
+
+  return { ok: false, error: "Allegro nie zaproponowało żadnej kategorii dla tego tytułu" };
 }
 
 export type AllegroDictionaryOption = { id: string; value: string };
