@@ -473,22 +473,59 @@ export function buildAllegroParameters(
 }
 
 // Allegro's description is a structured document, not a plain string.
+export type AllegroDescriptionDetails = {
+  brand: string | null;
+  model: string | null;
+  size: string | null;
+  color: string | null;
+  condition: string | null;
+};
+
 // Verified live (2026-08-23): a section's `items` array is capped at 2 — one
 // TEXT item per paragraph blew past that on any multi-paragraph listing
 // ("items" size must be between 1 and 2"). All paragraphs go into a single
 // TEXT item's HTML content instead, which has no such cap.
-export function buildAllegroDescription(text: string) {
+//
+// details/photoUrl are optional — when given, adds a "Szczegóły:" bullet
+// list (Marka/Model/Rozmiar/Kolor/Stan, whichever are actually known) and
+// the item's own photo inline in the description, one step closer to how
+// established sellers format theirs (bold headers, bullet list, embedded
+// image) rather than one unbroken block of prose. photoUrl reuses the same
+// Allegro-hosted URL already uploaded for the gallery — no re-upload.
+export function buildAllegroDescription(
+  text: string,
+  details?: AllegroDescriptionDetails,
+  photoUrl?: string | null
+) {
   const paragraphs = text
     .split(/\n+/)
     .map((p) => p.trim())
     .filter(Boolean);
-  return {
-    sections: [
-      {
-        items: [{ type: "TEXT", content: paragraphs.map((p) => `<p>${p}</p>`).join("") }],
-      },
-    ],
-  };
+
+  const introItems: { type: string; content?: string; url?: string }[] = [
+    { type: "TEXT", content: paragraphs.map((p) => `<p>${p}</p>`).join("") },
+  ];
+  if (photoUrl) introItems.push({ type: "IMAGE", url: photoUrl });
+
+  const sections = [{ items: introItems }];
+
+  if (details) {
+    const rows: string[] = [];
+    if (details.brand) rows.push(`<li>Marka: ${details.brand}</li>`);
+    if (details.model) rows.push(`<li>Model: ${details.model}</li>`);
+    if (details.size) rows.push(`<li>Rozmiar: ${details.size}</li>`);
+    if (details.color) rows.push(`<li>Kolor: ${details.color}</li>`);
+    if (details.condition) rows.push(`<li>Stan: ${details.condition}</li>`);
+    if (rows.length > 0) {
+      sections.push({
+        items: [
+          { type: "TEXT", content: `<p><b>Szczegóły:</b></p><ul>${rows.join("")}</ul>` },
+        ],
+      });
+    }
+  }
+
+  return { sections };
 }
 
 // --- Offers ---------------------------------------------------------------
@@ -504,6 +541,10 @@ export type AllegroOfferPayload = {
   active: boolean;
   // Drives marketedBeforeGPSRObligation below — see its own comment.
   isUsed: boolean;
+  // Optional — see buildAllegroDescription. Omitted entirely falls back to
+  // the plain paragraph-only description, same as before this existed.
+  descriptionDetails?: AllegroDescriptionDetails;
+  descriptionPhotoUrl?: string | null;
 };
 
 export type AllegroOffer = { id: string; status: string; url: string };
@@ -582,7 +623,7 @@ export async function createAllegroOffer(
       ],
       category: { id: payload.categoryId },
       parameters: payload.offerParameters,
-      description: buildAllegroDescription(payload.description),
+      description: buildAllegroDescription(payload.description, payload.descriptionDetails, payload.descriptionPhotoUrl),
       sellingMode: { format: "BUY_NOW", price: { amount: payload.price.toFixed(2), currency: "PLN" } },
       stock: { available: 1, unit: "UNIT" },
       location: ALLEGRO_LOCATION,

@@ -565,6 +565,15 @@ async function attemptPublishAllegroOffer(
     uploadedImages.push(uploaded.data);
   }
 
+  // Kolor is a manual field (typed per-publish, not stored on the item
+  // itself — see buildAllegroParameters), so the raw display value the
+  // employee actually typed only exists here, keyed by this category's own
+  // parameter id for "Kolor". Trying it once on the description per the
+  // user — everything else (Marka/Model/Rozmiar/Stan) comes straight off
+  // the item and needed no such lookup.
+  const colorParam = categoryParams.data.find((p) => p.name === "Kolor");
+  const colorValue = colorParam ? manualValues[colorParam.id]?.trim() || null : null;
+
   const offer = await createAllegroOffer(auth.accessToken, {
     title: listing.title ?? "",
     description: listing.description ?? "",
@@ -575,6 +584,14 @@ async function attemptPublishAllegroOffer(
     images: uploadedImages,
     active: true,
     isUsed: mapConditionToAllegroStan(item.condition) === "Używany",
+    descriptionDetails: {
+      brand: item.brand,
+      model: item.model,
+      size: item.size,
+      color: colorValue,
+      condition: item.condition,
+    },
+    descriptionPhotoUrl: uploadedImages[0] ?? null,
   });
   if (!offer.ok) return { status: "error", error: offer.error };
 
