@@ -66,7 +66,7 @@ export function ExportByAccountModal({
     setExporting(true);
     try {
       const scoped = sales.filter((s) => matchesPeriod(s.sale_date, period));
-      await exportSalesByAccounts(scoped, Array.from(selected), format);
+      await exportSalesByAccounts(scoped, Array.from(selected), format, period);
       onClose();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Nie udało się wygenerować pliku");
@@ -129,7 +129,7 @@ export function ExportByAccountModal({
           <p className={`text-xs ${mutedTextClass}`}>
             {format === "tabs"
               ? 'Każde konto na osobnej zakładce + zakładka "Razem" (jeśli wybrano więcej niż 1 konto).'
-              : "Wszystkie zaznaczone konta na jednej liście, z kolumną Konto."}
+              : "Wszystkie zaznaczone konta na jednej liście, z kolumną Konto + druga zakładka \"Ewidencja sprzedaży\" (podział PL/EU wg dnia)."}
           </p>
         </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import type { SaleRow } from "@/lib/sales-types";
+import type { PeriodFilterState } from "@/lib/period-filter";
 
 export type AccountExportFormat = "tabs" | "single";
 
@@ -82,10 +83,116 @@ function addAccountSheet(
   if (includeAccountColumn) sheet.getColumn(1).width = 22;
 }
 
+function addDaysIso(dateIso: string, days: number): string {
+  const d = new Date(`${dateIso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function lastDayOfMonthIso(monthIso: string): string {
+  const [year, month] = monthIso.split("-").map(Number);
+  const d = new Date(Date.UTC(year, month, 0));
+  return d.toISOString().slice(0, 10);
+}
+
+function isoToPl(dateIso: string): string {
+  const [y, m, d] = dateIso.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+// Days to list on the ewidencja sheet: every calendar day of the selected
+// period (so days with zero sales still appear, matching the tax-office
+// register format) — falls back to just the days sales actually happened
+// on when the period has no fixed bounds ("all", or a range missing an
+// end), since there's nothing sensible to fill gaps against otherwise.
+function ewidencjaDateRange(sales: SaleRow[], period?: PeriodFilterState): string[] {
+  if (period) {
+    if (period.mode === "day") return [period.date];
+    if (period.mode === "month") {
+      const from = `${period.month}-01`;
+      const to = lastDayOfMonthIso(period.month);
+      const days: string[] = [];
+      for (let d = from; d <= to; d = addDaysIso(d, 1)) days.push(d);
+      return days;
+    }
+    if (period.mode === "range" && period.from && period.to) {
+      const days: string[] = [];
+      for (let d = period.from; d <= period.to; d = addDaysIso(d, 1)) days.push(d);
+      return days;
+    }
+  }
+  const present = Array.from(
+    new Set(sales.map((s) => s.sale_date).filter((d): d is string => Boolean(d)))
+  ).sort();
+  return present;
+}
+
+// Matches the tax-office "ewidencja sprzedaży nieudokumentowanej
+// rachunkami" register (daily rows, domestic vs. EU revenue split, sale
+// count per day) — the same format used to hand-build these reports before
+// this export existed.
+function addEwidencjaSheet(
+  workbook: import("exceljs").Workbook,
+  sales: SaleRow[],
+  period: PeriodFilterState | undefined,
+  used: Set<string>
+) {
+  const sheet = workbook.addWorksheet(uniqueSheetName("Ewidencja sprzedaży", used));
+  sheet.addRow([
+    "LP",
+    "Data uzyskania przychodu",
+    "Kwota przychodu nieudokumentowanego rachunkami",
+    "Kwota przychodu nieudokumentowanego rachunkami EU",
+    "Uwagi / opis transakcji",
+  ]);
+  sheet.getRow(1).font = { bold: true };
+  sheet.getRow(1).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+
+  const byDate = new Map<string, { pl: number; eu: number; count: number }>();
+  for (const sale of sales) {
+    if (!sale.sale_date) continue;
+    const entry = byDate.get(sale.sale_date) ?? { pl: 0, eu: 0, count: 0 };
+    if (sale.country === "Polska") entry.pl += sale.sale_price ?? 0;
+    else entry.eu += sale.sale_price ?? 0;
+    entry.count += 1;
+    byDate.set(sale.sale_date, entry);
+  }
+
+  const days = ewidencjaDateRange(sales, period);
+  let totalPl = 0;
+  let totalEu = 0;
+  let totalCount = 0;
+  days.forEach((date, index) => {
+    const entry = byDate.get(date) ?? { pl: 0, eu: 0, count: 0 };
+    totalPl += entry.pl;
+    totalEu += entry.eu;
+    totalCount += entry.count;
+    sheet.addRow([
+      index + 1,
+      isoToPl(date),
+      entry.pl > 0 ? entry.pl : null,
+      entry.eu > 0 ? entry.eu : null,
+      entry.count > 0 ? `${entry.count} sprzedaż` : "",
+    ]);
+  });
+
+  const totalRow = sheet.addRow([null, "RAZEM", totalPl, totalEu, `${totalCount} sprzedaż`]);
+  totalRow.font = { bold: true };
+
+  sheet.getColumn(1).width = 6;
+  sheet.getColumn(2).width = 22;
+  sheet.getColumn(3).width = 30;
+  sheet.getColumn(4).width = 32;
+  sheet.getColumn(5).width = 20;
+  sheet.getColumn(3).numFmt = "0.00";
+  sheet.getColumn(4).numFmt = "0.00";
+}
+
 export async function exportSalesByAccounts(
   sales: SaleRow[],
   selectedAccounts: string[],
-  format: AccountExportFormat
+  format: AccountExportFormat,
+  period?: PeriodFilterState
 ): Promise<void> {
   const accountSet = new Set(selectedAccounts);
   const filtered = sales.filter((s) => accountSet.has(s.account_name || "—"));
@@ -103,6 +210,7 @@ export async function exportSalesByAccounts(
 
   if (format === "single") {
     addAccountSheet(workbook, "Sprzedaż", filtered, usedNames, true);
+    addEwidencjaSheet(workbook, filtered, period, usedNames);
   } else {
     for (const account of selectedAccounts) {
       addAccountSheet(workbook, account, byAccount.get(account) ?? [], usedNames, false);
