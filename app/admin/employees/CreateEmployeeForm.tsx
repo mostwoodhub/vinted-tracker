@@ -16,6 +16,12 @@ import {
 
 const initialState: CreateEmployeeState = { status: "idle" };
 
+// Every other role here still shows its raw slug (no existing translation
+// layer for this select) — only "sales" gets a label, per what was asked.
+const ROLE_LABELS: Partial<Record<(typeof ALL_ROLES)[number], string>> = {
+  sales: "Sprzedaż",
+};
+
 function generatePassword() {
   const chars =
     "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -90,7 +96,7 @@ export function CreateEmployeeForm() {
             </option>
             {ALL_ROLES.map((role) => (
               <option key={role} value={role}>
-                {role}
+                {ROLE_LABELS[role] ?? role}
               </option>
             ))}
           </select>

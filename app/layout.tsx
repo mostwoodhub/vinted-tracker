@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { getCurrentEmployee, getEffectiveRoles, isIntakeOnly } from "@/lib/auth";
+import { getCurrentEmployee, getEffectiveRoles, isIntakeOnly, isSalesOnly } from "@/lib/auth";
 import { logout } from "@/app/login/actions";
 import { ThemeToggle } from "@/app/ThemeToggle";
 import { NavMenu, type NavGroup } from "@/app/NavMenu";
@@ -28,6 +28,13 @@ function getNavGroups(roles: Set<string>): NavGroup[] {
   // warehouse browser (prices, every item, pending queue), just this.
   if (isIntakeOnly(roles)) {
     groups.push({ type: "link", href: "/intake", label: "Przyjęcie" });
+    return groups;
+  }
+
+  // Pure sales employees only record/browse sales — they don't need the
+  // warehouse, drafts, or any admin-only sections.
+  if (isSalesOnly(roles)) {
+    groups.push({ type: "link", href: "/sales", label: "Sprzedaż" });
     return groups;
   }
 
@@ -58,6 +65,10 @@ function getNavGroups(roles: Set<string>): NavGroup[] {
       ],
     });
     groups.push({ type: "link", href: "/dashboard", label: "Dashboard" });
+  } else if (roles.has("sales")) {
+    // Non-admin combo role (e.g. photographer + sales) — admin's branch
+    // above already added this link, so only add it here otherwise.
+    groups.push({ type: "link", href: "/sales", label: "Sprzedaż" });
   }
 
   const magazynLinks = [

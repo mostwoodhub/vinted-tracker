@@ -44,6 +44,21 @@ export function isIntakeOnly(roles: Set<string>): boolean {
     roles.has("intake") &&
     !roles.has("admin") &&
     !roles.has("photographer") &&
+    !roles.has("publisher") &&
+    !roles.has("sales")
+  );
+}
+
+// Same idea as isIntakeOnly — a pure sales employee only needs the sales
+// page (list + "+ Dodaj"), not the warehouse/photo/draft nav. Anyone who
+// also holds another role still sees their normal nav, plus the Sprzedaż
+// link (handled separately in getNavGroups).
+export function isSalesOnly(roles: Set<string>): boolean {
+  return (
+    roles.has("sales") &&
+    !roles.has("admin") &&
+    !roles.has("intake") &&
+    !roles.has("photographer") &&
     !roles.has("publisher")
   );
 }

@@ -9,7 +9,7 @@ export default async function SalesPage() {
   const employee = await getCurrentEmployee();
   const roles = getEffectiveRoles(employee);
 
-  if (!roles.has("admin")) {
+  if (!roles.has("admin") && !roles.has("sales")) {
     redirect(isIntakeOnly(roles) ? "/intake" : "/warehouse");
   }
 
