@@ -42,6 +42,16 @@ export const VINTED_COUNTRY_PLATFORMS: Record<
   },
 };
 
+// Allegro and OLX aren't multi-account like Vinted — there's exactly one
+// account per platform, so picking the platform can just fill in Konto
+// too, the same way Vinted DE/IT does for its own account. No country
+// change needed here (both are Polish marketplaces, Kraj stays whatever it
+// already is).
+export const SINGLE_ACCOUNT_PLATFORMS: Record<string, string> = {
+  Allegro: "Allegro",
+  OLX: "OLX",
+};
+
 // Every country reachable through either DE or IT — their VAT rates in
 // country-vat-rates.ts are all guesses (defaulted to Polska's, no
 // historical data exists yet for any of them), so a sale into one of

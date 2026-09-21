@@ -20,7 +20,11 @@ import {
   calcVatAmount,
 } from "@/lib/sales-calc";
 import { COUNTRY_VAT_RATE_MODE, COUNTRIES } from "@/lib/country-vat-rates";
-import { VINTED_COUNTRY_PLATFORMS, VINTED_UNVERIFIED_VAT_COUNTRIES } from "@/lib/vinted-platform-accounts";
+import {
+  SINGLE_ACCOUNT_PLATFORMS,
+  VINTED_COUNTRY_PLATFORMS,
+  VINTED_UNVERIFIED_VAT_COUNTRIES,
+} from "@/lib/vinted-platform-accounts";
 import { formatPln } from "@/lib/format";
 import { FileDropzone } from "@/app/FileDropzone";
 import { LabelCropModal } from "@/app/LabelCropModal";
@@ -466,7 +470,10 @@ export function AddSaleForm({
     if (mapped) {
       handleCountryChange(mapped.country);
       setAccountName(mapped.accountName);
+      return;
     }
+    const singleAccount = SINGLE_ACCOUNT_PLATFORMS[value];
+    if (singleAccount) setAccountName(singleAccount);
   }
 
   function handleCountryChange(value: string) {
