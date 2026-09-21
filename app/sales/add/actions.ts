@@ -255,6 +255,7 @@ export async function createSale(
     label_filename: labelResult.filename,
     label_url2: label2Result.url,
     label_filename2: label2Result.filename,
+    created_by: access.employee.id,
     ...(currencyAudit ?? {}),
   });
 

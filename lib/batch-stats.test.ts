@@ -43,6 +43,7 @@ function makeSale(overrides: Partial<SaleRow>): SaleRow {
     original_sale_price: null,
     original_cost_price: null,
     exchange_rate: null,
+    created_by: null,
     ...overrides,
   };
 }

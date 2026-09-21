@@ -48,6 +48,9 @@ export type SaleRow = {
   original_sale_price: number | null;
   original_cost_price: number | null;
   exchange_rate: number | null;
+  // Which employee recorded this sale — null on historical/migrated rows.
+  // Used to scope non-admin roles (e.g. sales) to only their own entries.
+  created_by: string | null;
 };
 
 export const SALE_EXPORT_COLUMNS = "*";

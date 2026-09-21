@@ -9,19 +9,24 @@ export default async function SalesPage() {
   const employee = await getCurrentEmployee();
   const roles = getEffectiveRoles(employee);
 
-  if (!roles.has("admin") && !roles.has("sales")) {
+  if (!employee || (!roles.has("admin") && !roles.has("sales"))) {
     redirect(isIntakeOnly(roles) ? "/intake" : "/warehouse");
   }
 
+  const isAdmin = roles.has("admin");
+
   const [sales, expenses, { data: profiles }, { data: accountRows }] = await Promise.all([
-    fetchAllRows<SaleRow>((from, to) =>
-      supabaseAdmin
+    fetchAllRows<SaleRow>((from, to) => {
+      let query = supabaseAdmin
         .from("sales")
         .select("*")
         .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .range(from, to)
-    ),
+        .order("created_at", { ascending: false });
+      // Non-admins (e.g. the sales role) only see sales they recorded
+      // themselves — everyone else's stays out of view.
+      if (!isAdmin) query = query.eq("created_by", employee.id);
+      return query.range(from, to);
+    }),
     fetchAllRows<ExpenseRow>((from, to) =>
       supabaseAdmin
         .from("expenses")
@@ -43,7 +48,7 @@ export default async function SalesPage() {
       sales={sales}
       expenses={expenses}
       profiles={(profiles ?? []) as ProfileRow[]}
-      isAdmin={roles.has("admin")}
+      isAdmin={isAdmin}
       accountNames={accountNames}
     />
   );
