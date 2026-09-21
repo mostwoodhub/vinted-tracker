@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getCurrentEmployee, getEffectiveRoles, isIntakeOnly } from "@/lib/auth";
+import { getCurrentEmployee, getEffectiveRoles, isIntakeOnly, isSalesOnly } from "@/lib/auth";
 import {
   fetchLastActivityByItem,
   daysSince,
@@ -15,6 +15,7 @@ export default async function WarehousePage() {
   const employee = await getCurrentEmployee();
   const roles = getEffectiveRoles(employee);
   if (isIntakeOnly(roles)) redirect("/intake");
+  if (isSalesOnly(roles)) redirect("/sales");
   const isAdmin = roles.has("admin");
 
   // Independent of each other — fire together instead of one after another.
