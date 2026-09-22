@@ -33,6 +33,15 @@ function proxiedUrl(url: string): string {
   return `/api/image-proxy?url=${encodeURIComponent(url)}`;
 }
 
+// Printed cards top out at 150mm wide — even a generous 300 DPI print
+// never needs more than ~1800px on the longest side. Source photos are
+// often full phone-camera resolution (3000-4000px+), and embedding those
+// untouched as lossless PNG is what made these PDFs enormous (tens of MB
+// for a batch of labels). Downscaling here, once, before anything gets
+// embedded, is the actual fix — never upscale a smaller source.
+const MAX_EMBED_DIMENSION_PX = 1800;
+const JPEG_QUALITY = 0.82;
+
 // Many carrier labels (DPD, Orlen Paczka, DHL BOX screenshots, …) are saved
 // portrait. On a landscape 150x100mm card that leaves them tiny and
 // letterboxed — rotate 90° so they fill the page instead, same as the
@@ -40,18 +49,46 @@ function proxiedUrl(url: string): string {
 // also needs to apply to labels stored before that fix.
 function canvasToLoadedImage(canvas: HTMLCanvasElement, forceLandscape?: boolean): LoadedImage {
   const rotate = Boolean(forceLandscape) && canvas.height > canvas.width;
-  let final = canvas;
+  let rotated = canvas;
   if (rotate) {
-    final = document.createElement("canvas");
-    final.width = canvas.height;
-    final.height = canvas.width;
-    const ctx = final.getContext("2d");
+    rotated = document.createElement("canvas");
+    rotated.width = canvas.height;
+    rotated.height = canvas.width;
+    const ctx = rotated.getContext("2d");
     if (!ctx) throw new Error("Canvas nie jest obslugiwany w tej przegladarce");
-    ctx.translate(final.width / 2, final.height / 2);
+    ctx.translate(rotated.width / 2, rotated.height / 2);
     ctx.rotate(Math.PI / 2);
     ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
   }
-  return { dataUrl: final.toDataURL("image/png"), width: final.width, height: final.height };
+
+  const scale = Math.min(1, MAX_EMBED_DIMENSION_PX / Math.max(rotated.width, rotated.height));
+  let final = rotated;
+  if (scale < 1) {
+    final = document.createElement("canvas");
+    final.width = Math.round(rotated.width * scale);
+    final.height = Math.round(rotated.height * scale);
+    const ctx = final.getContext("2d");
+    if (!ctx) throw new Error("Canvas nie jest obslugiwany w tej przegladarce");
+    ctx.drawImage(rotated, 0, 0, final.width, final.height);
+  }
+
+  // Flatten onto white first — JPEG has no alpha channel, and drawing a
+  // transparent-background PNG straight into toDataURL("image/jpeg") turns
+  // the transparent areas black instead of white.
+  const flat = document.createElement("canvas");
+  flat.width = final.width;
+  flat.height = final.height;
+  const flatCtx = flat.getContext("2d");
+  if (!flatCtx) throw new Error("Canvas nie jest obslugiwany w tej przegladarce");
+  flatCtx.fillStyle = "#ffffff";
+  flatCtx.fillRect(0, 0, flat.width, flat.height);
+  flatCtx.drawImage(final, 0, 0);
+
+  return {
+    dataUrl: flat.toDataURL("image/jpeg", JPEG_QUALITY),
+    width: flat.width,
+    height: flat.height,
+  };
 }
 
 function decodeImageBlob(blob: Blob): Promise<HTMLCanvasElement> {
@@ -140,7 +177,7 @@ async function drawLabel(
   try {
     const img = await loadImageAsPng(labelUrl, { forceLandscape: true });
     const fit = fitContain(img.width, img.height, box.w, box.h);
-    doc.addImage(img.dataUrl, "PNG", box.x + fit.x, box.y + fit.y, fit.w, fit.h);
+    doc.addImage(img.dataUrl, "JPEG", box.x + fit.x, box.y + fit.y, fit.w, fit.h);
   } catch (err) {
     const reason = err instanceof Error ? err.message : "nieznany blad";
     console.error(`[label-print] Nie udalo sie wczytac etykiety (${context}):`, err);
@@ -203,7 +240,7 @@ async function drawPhotoGrid(
       try {
         const img = await loadImageAsPng(url);
         const fit = fitContain(img.width, img.height, size, size);
-        doc.addImage(img.dataUrl, "PNG", cellX + fit.x, cellY + fit.y, fit.w, fit.h);
+        doc.addImage(img.dataUrl, "JPEG", cellX + fit.x, cellY + fit.y, fit.w, fit.h);
       } catch (err) {
         console.error(`[label-print] Nie udalo sie wczytac zdjecia (sale ${sale.id}):`, err);
         doc.setDrawColor(200);
