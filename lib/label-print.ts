@@ -269,10 +269,25 @@ async function drawPhotoGrid(
   }
 }
 
+// Most printers (thermal label printers especially) can't actually print
+// all the way to the physical edge of the page — there's a non-printable
+// border a few mm wide that just gets silently clipped, even though the
+// PDF itself is correct. Drawing the label flush to 0/PAGE_WIDTH_MM/etc.
+// put real content (barcode digits, the destination code) right in that
+// dead zone, so it came out missing on the actual printed label. Insetting
+// the label's own box by a small margin keeps it inside the printable
+// area on any printer, at the cost of a thin white border around it.
+const PRINT_SAFE_MARGIN_MM = 3;
+
 // Label-only export: one full-page card per label.
 async function addLabelPage(doc: jsPDF, labelUrl: string, isFirstPage: boolean, context: string) {
   if (!isFirstPage) doc.addPage([PAGE_WIDTH_MM, PAGE_HEIGHT_MM], "landscape");
-  await drawLabel(doc, labelUrl, context, { x: 0, y: 0, w: PAGE_WIDTH_MM, h: PAGE_HEIGHT_MM });
+  await drawLabel(doc, labelUrl, context, {
+    x: PRINT_SAFE_MARGIN_MM,
+    y: PRINT_SAFE_MARGIN_MM,
+    w: PAGE_WIDTH_MM - PRINT_SAFE_MARGIN_MM * 2,
+    h: PAGE_HEIGHT_MM - PRINT_SAFE_MARGIN_MM * 2,
+  });
 }
 
 // Photo-only page, used when a sale has no label at all.
@@ -292,10 +307,10 @@ async function addCombinedPage(
 ) {
   if (!isFirstPage) doc.addPage([PAGE_WIDTH_MM, PAGE_HEIGHT_MM], "landscape");
   await drawLabel(doc, labelUrl, context, {
-    x: 0,
-    y: 0,
-    w: PAGE_WIDTH_MM,
-    h: COMBINED_LABEL_HEIGHT_MM,
+    x: PRINT_SAFE_MARGIN_MM,
+    y: PRINT_SAFE_MARGIN_MM,
+    w: PAGE_WIDTH_MM - PRINT_SAFE_MARGIN_MM * 2,
+    h: COMBINED_LABEL_HEIGHT_MM - PRINT_SAFE_MARGIN_MM,
   });
   doc.setDrawColor(220);
   doc.line(4, COMBINED_LABEL_HEIGHT_MM, PAGE_WIDTH_MM - 4, COMBINED_LABEL_HEIGHT_MM);
