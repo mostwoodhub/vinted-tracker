@@ -10,7 +10,7 @@ import { applySaleCurrencyConversion, resolveSaleCurrency } from "@/lib/sale-cur
 import { getPayoutRateToPln } from "@/lib/nbp-exchange-rate";
 import { uploadSaleFile, uploadSalePhotos } from "@/lib/sales-upload";
 import { markItemSoldByShoeId } from "@/lib/item-sale-link";
-import { sendTelegramMessage } from "@/lib/telegram";
+import { sendTelegramMessage, sendTelegramPhoto } from "@/lib/telegram";
 import { formatPln } from "@/lib/format";
 import { formatItemNumber } from "@/lib/item-number";
 
@@ -287,7 +287,12 @@ export async function createSale(
       parsed.accountName ? `Konto: ${parsed.accountName}` : null,
       !confirmed ? "⏳ Czeka na zatwierdzenie" : null,
     ].filter(Boolean);
-    await sendTelegramMessage(lines.join("\n"));
+    const caption = lines.join("\n");
+    if (photoUrls[0]) {
+      await sendTelegramPhoto(photoUrls[0], caption);
+    } else {
+      await sendTelegramMessage(caption);
+    }
   });
 
   redirect("/sales");
