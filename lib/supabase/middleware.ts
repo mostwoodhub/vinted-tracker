@@ -12,7 +12,13 @@ import { NextResponse, type NextRequest } from "next/server";
 // this) makes Chrome silently fail the installability check and fall
 // back to a plain "Add to Home screen" shortcut instead of a real,
 // standalone-mode app install.
+//
+// /api/cron/* has no Supabase session at all — Vercel Cron calls it
+// directly with an Authorization: Bearer CRON_SECRET header, checked by
+// the route itself. Without this, every cron request got silently
+// redirected to /login before the route handler ever ran.
 const PUBLIC_PATHS = ["/login", "/reset-password", "/manifest.webmanifest"];
+const PUBLIC_PATH_PREFIXES = ["/api/cron/"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -71,7 +77,9 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  const isPublicPath = PUBLIC_PATHS.includes(request.nextUrl.pathname);
+  const isPublicPath =
+    PUBLIC_PATHS.includes(request.nextUrl.pathname) ||
+    PUBLIC_PATH_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix));
 
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
