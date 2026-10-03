@@ -236,7 +236,10 @@ export function SalesView({
           )}
         </div>
 
-        <div className="flex flex-col gap-[var(--gap-default)]">
+        <div
+  key={`${JSON.stringify(period)}:${search.trim().toLowerCase()}:${unconfirmedOnly}`}
+  className="flex flex-col gap-[var(--gap-default)]"
+>
           {filtered.map((sale) => {
             const multiPair = isMultiPairSale(sale);
             const incomplete = isSaleIncomplete(sale);
