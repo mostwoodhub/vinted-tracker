@@ -158,3 +158,91 @@ export async function markItemSoldByShoeId(
     await markItemSoldById(rows[0].id);
   }
 }
+
+// Reverse of markItemSoldByShoeId, for when a sale is deleted/annulled —
+// without this, the pair stayed "sold" in the warehouse forever and never
+// came back into stock. Same forgiving rules as marking: ambiguous numbers
+// and numbers still covered by another active sale are left alone rather
+// than guessed at. Restores whatever status the item had before it was
+// marked sold (falls back to "received").
+export async function unmarkItemsSoldForDeletedSale(sale: {
+  legacy_shoe_id: string | null;
+  items: { shoeId: string; itemId?: string | null }[] | null;
+}): Promise<void> {
+  try {
+    const entries =
+      sale.items && sale.items.length > 1
+        ? sale.items.map((i) => ({ shoeId: i.shoeId?.trim(), itemId: i.itemId ?? null }))
+        : (sale.legacy_shoe_id ?? "")
+            .split(",")
+            .map((part) => ({ shoeId: part.trim(), itemId: null as string | null }));
+
+    for (const { shoeId, itemId } of entries) {
+      if (!shoeId && !itemId) continue;
+
+      let target: { id: string; status: string } | null = null;
+      if (itemId) {
+        const { data } = await supabaseAdmin
+          .from("items")
+          .select("id, status")
+          .eq("id", itemId)
+          .maybeSingle();
+        target = data;
+      } else {
+        const { data } = await supabaseAdmin
+          .from("items")
+          .select("id, status")
+          .eq("legacy_number", shoeId)
+          .is("deleted_at", null);
+        if (data?.length === 1) target = data[0];
+      }
+      if (!target || target.status !== "sold") continue;
+
+      if (shoeId) {
+        const [{ data: bySingle }, { data: byItems }] = await Promise.all([
+          supabaseAdmin
+            .from("sales")
+            .select("id, legacy_shoe_id")
+            .is("deleted_at", null)
+            .ilike("legacy_shoe_id", `%${shoeId}%`),
+          supabaseAdmin
+            .from("sales")
+            .select("id")
+            .is("deleted_at", null)
+            .contains("items", [{ shoeId }]),
+        ]);
+        const stillSold =
+          (byItems?.length ?? 0) > 0 ||
+          (bySingle ?? []).some((s) =>
+            (s.legacy_shoe_id ?? "").split(",").some((part: string) => part.trim() === shoeId)
+          );
+        if (stillSold) continue;
+      }
+
+      const { data: lastLog } = await supabaseAdmin
+        .from("item_status_log")
+        .select("from_status")
+        .eq("item_id", target.id)
+        .eq("to_status", "sold")
+        .order("changed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const previous = lastLog?.from_status && lastLog.from_status !== "sold" ? lastLog.from_status : "received";
+
+      const { error } = await supabaseAdmin
+        .from("items")
+        .update({ status: previous })
+        .eq("id", target.id);
+      if (error) continue;
+
+      await supabaseAdmin.from("item_status_log").insert({
+        item_id: target.id,
+        from_status: "sold",
+        to_status: previous,
+        note: "Sprzedaż usunięta",
+      });
+    }
+  } catch (err) {
+    console.error("[item-sale-link] Nie udalo sie przywrocic towaru po usunieciu sprzedazy:", err);
+  }
+}

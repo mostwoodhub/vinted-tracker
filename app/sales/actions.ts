@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { unmarkItemsSoldForDeletedSale } from "@/lib/item-sale-link";
 import { checkRole } from "@/lib/auth";
 import { parseSaleFormFields } from "@/lib/sales-form-parse";
 import { applySaleCurrencyConversion } from "@/lib/sale-currency";
@@ -166,12 +167,23 @@ export async function deleteSale(saleId: string) {
   const access = await checkRole("admin");
   if (!access.ok) throw new Error(access.error);
 
+  const { data: sale } = await supabaseAdmin
+    .from("sales")
+    .select("legacy_shoe_id, items")
+    .eq("id", saleId)
+    .maybeSingle();
+
   const { error } = await supabaseAdmin
     .from("sales")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", saleId);
 
   if (error) throw new Error(error.message);
+
+  // Best-effort: a deleted/annulled sale must put its pair back in stock.
+  // Runs after the soft-delete so the "is another active sale still using
+  // this number" check doesn't count the sale being deleted.
+  if (sale) await unmarkItemsSoldForDeletedSale(sale);
 
   revalidateSalesPaths();
 }
