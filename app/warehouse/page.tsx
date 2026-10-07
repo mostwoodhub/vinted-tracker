@@ -7,7 +7,8 @@ import {
   PROCESSING_STATUSES,
 } from "@/lib/item-aging";
 import { loadPhotoAvailability } from "@/lib/item-photos";
-import { buildSalePriceIndex, type SaleForPriceMatch } from "@/lib/item-sale-match";
+import { buildSalePriceIndex } from "@/lib/item-sale-match";
+import { findSalesOutsideWarehouse, type SaleForOutsideCheck } from "@/lib/warehouse-outside-sales";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { WarehouseCards, type WarehouseCardItem } from "./WarehouseCards";
 
@@ -42,10 +43,12 @@ export default async function WarehousePage() {
     // a plain .select() silently caps at PostgREST's 1000-row default,
     // which for this table (thousands of rows) means recent sales just
     // vanish from the match with no error.
-    fetchAllRows<SaleForPriceMatch>((from, to) =>
+    fetchAllRows<SaleForOutsideCheck>((from, to) =>
       supabaseAdmin
         .from("sales")
-        .select("legacy_shoe_id, sale_price, items")
+        .select(
+          "id, legacy_shoe_id, sale_price, items, sale_date, buyer_name, account_name, photo_url, photo_urls"
+        )
         .is("deleted_at", null)
         .not("sale_price", "is", null)
         .range(from, to)
@@ -93,6 +96,10 @@ export default async function WarehousePage() {
     };
   });
 
+  // Sold pairs that only exist in `sales` (never added to the warehouse, or
+  // sold under a reused number) — shown under "Sprzedano" per batch.
+  const outsideSales = findSalesOutsideWarehouse(saleRows, rows, allBatchLabels);
+
   return (
     <div className="w-full flex-1 bg-[var(--color-bg)]">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-[var(--space-lg)] px-6 py-12">
@@ -104,6 +111,7 @@ export default async function WarehousePage() {
           defaultStatusFilter=""
           isAdmin={isAdmin}
           allBatchLabels={allBatchLabels}
+          outsideSales={outsideSales}
         />
       </div>
     </div>

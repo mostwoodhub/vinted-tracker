@@ -20,6 +20,7 @@ import {
   type UpdateCostState,
 } from "./actions";
 import { inputClass, mutedTextClass } from "@/lib/ui-classes";
+import type { OutsideSale } from "@/lib/warehouse-outside-sales";
 
 export type WarehouseCardItem = {
   id: string;
@@ -497,6 +498,7 @@ export function WarehouseCards({
   defaultStatusFilter = "ready",
   isAdmin = false,
   allBatchLabels,
+  outsideSales = [],
 }: {
   items: WarehouseCardItem[];
   defaultStatusFilter?: string;
@@ -507,6 +509,9 @@ export function WarehouseCards({
   // existing), so deriving options purely from `items` left the Partia
   // filter empty even though batches were there to filter by.
   allBatchLabels?: string[];
+  // Sold pairs that have no sold item in the warehouse — see
+  // lib/warehouse-outside-sales.ts.
+  outsideSales?: OutsideSale[];
 }) {
   const brands = useMemo(
     () =>
@@ -661,6 +666,25 @@ export function WarehouseCards({
     }
     return arr;
   }, [filtered, sortBy]);
+
+  // Only meaningful without brand/size/condition/price filters — those
+  // fields don't exist on a bare sales row.
+  const outsideFilters = !brand && !size && !condition && !minPrice && !maxPrice;
+  const outsideInBatch = useMemo(() => {
+    if (!outsideFilters) return [];
+    const q = search.trim().toLowerCase();
+    return outsideSales.filter(
+      (s) =>
+        (!batch || s.batchLabel === batch) &&
+        (!q || [s.number, s.buyer, s.account].some((v) => v?.toLowerCase().includes(q)))
+    );
+  }, [outsideSales, outsideFilters, batch, search]);
+
+  const outsideByBatch = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of outsideInBatch) counts.set(s.batchLabel, (counts.get(s.batchLabel) ?? 0) + 1);
+    return Array.from(counts.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [outsideInBatch]);
 
   const summary = useMemo(() => {
     const sold = bySecondaryFilters.filter((item) => item.status === "sold").length;
@@ -870,6 +894,11 @@ export function WarehouseCards({
           <p className="mt-1 text-3xl font-bold text-[var(--color-success)]">
             {summary.sold}
           </p>
+          {outsideInBatch.length > 0 && (
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              + {outsideInBatch.length} poza magazynem (ze Sprzedaży)
+            </p>
+          )}
         </div>
       </div>
 
@@ -1038,6 +1067,86 @@ export function WarehouseCards({
           </div>
         )}
       </div>
+
+      {statusFilter === "sold" && outsideInBatch.length > 0 && (
+        <div className="flex flex-col gap-[var(--gap-default)]">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--color-text)]">
+              Sprzedane poza magazynem ({outsideInBatch.length})
+            </h2>
+            <p className={`text-xs ${mutedTextClass}`}>
+              Te pary są w zakładce Sprzedaż, ale nie ma ich w Magazynie — sprzedane przed
+              dodaniem do aplikacji albo pod powtórzonym numerem.
+            </p>
+          </div>
+
+          {!batch ? (
+            <div className="flex flex-wrap gap-2">
+              {outsideByBatch.map(([label, count]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setBatch(label)}
+                  className="rounded-full bg-[var(--color-surface)] px-3 py-1 text-sm text-[var(--color-text)] hover:opacity-80"
+                >
+                  {label}: {count}
+                </button>
+              ))}
+              <span className={`self-center text-xs ${mutedTextClass}`}>
+                Wybierz partię, aby zobaczyć listę.
+              </span>
+            </div>
+          ) : (
+            outsideInBatch.map((s) => (
+              <div
+                key={s.key}
+                className="flex items-center gap-[var(--space-md)] rounded-[var(--radius-md)] bg-[var(--color-surface)] p-[var(--card-padding)]"
+              >
+                {s.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={s.photoUrl}
+                    alt=""
+                    loading="lazy"
+                    onClick={() => setZoomedUrl(s.photoUrl)}
+                    className="h-16 w-16 shrink-0 cursor-zoom-in rounded-[var(--radius-sm)] object-cover"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-xl">
+                    👟
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-[var(--color-text)]">
+                    {s.number}{" "}
+                    <span className="ml-1 rounded-full bg-[var(--color-bg)] px-2 py-0.5 text-xs font-normal">
+                      📦 {s.batchLabel}
+                    </span>
+                  </p>
+                  <p className={`truncate text-sm ${mutedTextClass}`}>
+                    {s.saleDate ?? "—"}
+                    {s.buyer ? ` · ${s.buyer}` : ""}
+                    {s.account ? ` · ${s.account}` : ""}
+                  </p>
+                </div>
+                <div className="text-right">
+                  {s.price != null && (
+                    <p className="font-semibold text-[var(--color-success)]">Sprzedano za {s.price} zł</p>
+                  )}
+                  {isAdmin && (
+                    <Link
+                      href={`/sales/${s.saleId}/edit`}
+                      className="text-xs text-[var(--color-text-muted)] underline underline-offset-2"
+                    >
+                      Zobacz sprzedaż
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {zoomedUrl && (
         <div
