@@ -20,6 +20,10 @@ export default async function PhotoCropPage() {
           krawędź, a potem zapisz wszystkie od razu — obrobione pliki
           trafiają na twój komputer (nie do systemu).
         </p>
+        <p className={`text-sm ${mutedTextClass}`}>
+          Po wybraniu zdjęć pod każdym pojawi się obrót (↺ −1° / +1° ↻ oraz suwak do ±15°) —
+          służy do wyprostowania krzywo zrobionego zdjęcia.
+        </p>
         <PhotoCropTool />
       </div>
     </div>
