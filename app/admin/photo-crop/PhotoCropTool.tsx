@@ -8,16 +8,38 @@ import {
   inputClass,
   labelClass,
 } from "@/lib/ui-classes";
+import { rotationFillScale } from "@/lib/photo-rotate";
 
 const MAX_CROP_PERCENT = 45;
+const MAX_ANGLE = 15;
 
 // Trims the same percentage off all four sides, then re-encodes as a blob
 // in the source file's own mime type (falls back to jpeg for anything the
 // canvas can't identify, e.g. some HEIC files) — the crop itself never
 // leaves the browser, nothing is uploaded anywhere.
-async function cropImageFile(file: File, cropPercent: number): Promise<Blob> {
+async function cropImageFile(file: File, cropPercent: number, angle: number): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
   try {
+    // Straighten first, on a same-size canvas (scaled up just enough that
+    // no corner is left empty), then trim the edges off the result — the
+    // live preview applies the same order, so what it shows is what's saved.
+    let source: CanvasImageSource = bitmap;
+    if (angle !== 0) {
+      const tilted = document.createElement("canvas");
+      tilted.width = bitmap.width;
+      tilted.height = bitmap.height;
+      const tctx = tilted.getContext("2d");
+      if (!tctx) throw new Error("Canvas context unavailable");
+      tctx.fillStyle = "#ffffff";
+      tctx.fillRect(0, 0, tilted.width, tilted.height);
+      tctx.translate(tilted.width / 2, tilted.height / 2);
+      tctx.rotate((angle * Math.PI) / 180);
+      const scale = rotationFillScale(bitmap.width, bitmap.height, angle);
+      tctx.scale(scale, scale);
+      tctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+      source = tilted;
+    }
+
     const cropX = Math.round(bitmap.width * (cropPercent / 100));
     const cropY = Math.round(bitmap.height * (cropPercent / 100));
     const width = bitmap.width - cropX * 2;
@@ -27,7 +49,7 @@ async function cropImageFile(file: File, cropPercent: number): Promise<Blob> {
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas context unavailable");
-    ctx.drawImage(bitmap, cropX, cropY, width, height, 0, 0, width, height);
+    ctx.drawImage(source, cropX, cropY, width, height, 0, 0, width, height);
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, file.type || "image/jpeg", 0.92)
     );
@@ -41,6 +63,10 @@ async function cropImageFile(file: File, cropPercent: number): Promise<Blob> {
 export function PhotoCropTool() {
   const [files, setFiles] = useState<File[]>([]);
   const [cropPercent, setCropPercent] = useState(5);
+  // Per-photo straightening angle (degrees, + = clockwise) and each
+  // preview's natural aspect (needed for the corner-fill zoom).
+  const [angles, setAngles] = useState<number[]>([]);
+  const [aspects, setAspects] = useState<Record<number, number>>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +79,10 @@ export function PhotoCropTool() {
   }, [previewUrls]);
 
   function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    setFiles(Array.from(e.target.files ?? []));
+    const picked = Array.from(e.target.files ?? []);
+    setFiles(picked);
+    setAngles(picked.map(() => 0));
+    setAspects({});
     setError(null);
   }
 
@@ -63,7 +92,7 @@ export function PhotoCropTool() {
     try {
       const croppedFiles: File[] = [];
       for (let i = 0; i < files.length; i++) {
-        const blob = await cropImageFile(files[i], cropPercent);
+        const blob = await cropImageFile(files[i], cropPercent, angles[i] ?? 0);
         croppedFiles.push(new File([blob], `cropped-${files[i].name}`, { type: blob.type }));
       }
 
@@ -137,31 +166,78 @@ export function PhotoCropTool() {
 
       {files.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-          {files.map((file, i) => (
-            <div
-              key={`${file.name}-${i}`}
-              className="relative overflow-hidden rounded-lg bg-[var(--color-surface-2)]"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={previewUrls[i]} alt="" className="block h-auto w-full" />
-              <div
-                className="absolute inset-x-0 top-0 bg-black/50"
-                style={{ height: `${cropPercent}%` }}
-              />
-              <div
-                className="absolute inset-x-0 bottom-0 bg-black/50"
-                style={{ height: `${cropPercent}%` }}
-              />
-              <div
-                className="absolute inset-y-0 left-0 bg-black/50"
-                style={{ width: `${cropPercent}%` }}
-              />
-              <div
-                className="absolute inset-y-0 right-0 bg-black/50"
-                style={{ width: `${cropPercent}%` }}
-              />
-            </div>
-          ))}
+          {files.map((file, i) => {
+            const angle = angles[i] ?? 0;
+            const aspect = aspects[i];
+            const scale = aspect ? rotationFillScale(aspect, 1, angle) : 1;
+            const setAngle = (next: number) =>
+              setAngles((prev) => {
+                const copy = [...prev];
+                copy[i] = Math.min(MAX_ANGLE, Math.max(-MAX_ANGLE, Math.round(next * 10) / 10));
+                return copy;
+              });
+            return (
+              <div key={`${file.name}-${i}`} className="flex flex-col gap-2">
+                <div className="relative overflow-hidden rounded-lg bg-white">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewUrls[i]}
+                    alt=""
+                    className="block h-auto w-full"
+                    style={{ transform: `rotate(${angle}deg) scale(${scale})`, transformOrigin: "center" }}
+                    onLoad={(e) => {
+                      const { naturalWidth, naturalHeight } = e.currentTarget;
+                      setAspects((prev) => ({ ...prev, [i]: naturalWidth / naturalHeight }));
+                    }}
+                  />
+                  <div className="absolute inset-x-0 top-0 bg-black/50" style={{ height: `${cropPercent}%` }} />
+                  <div className="absolute inset-x-0 bottom-0 bg-black/50" style={{ height: `${cropPercent}%` }} />
+                  <div className="absolute inset-y-0 left-0 bg-black/50" style={{ width: `${cropPercent}%` }} />
+                  <div className="absolute inset-y-0 right-0 bg-black/50" style={{ width: `${cropPercent}%` }} />
+                </div>
+                <div className="flex flex-col gap-1 text-xs">
+                  <div className="flex items-center justify-between gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setAngle(angle - 1)}
+                      className="rounded-full bg-[var(--color-surface-2)] px-2.5 py-1"
+                      aria-label="Obróć w lewo o 1 stopień"
+                    >
+                      ↺ −1°
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAngle(0)}
+                      disabled={angle === 0}
+                      className="tabular-nums text-[var(--color-text-muted)] disabled:opacity-60"
+                      aria-label="Resetuj obrót"
+                    >
+                      {angle > 0 ? "+" : ""}
+                      {angle}°
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAngle(angle + 1)}
+                      className="rounded-full bg-[var(--color-surface-2)] px-2.5 py-1"
+                      aria-label="Obróć w prawo o 1 stopień"
+                    >
+                      +1° ↻
+                    </button>
+                  </div>
+                  <input
+                    type="range"
+                    min={-MAX_ANGLE}
+                    max={MAX_ANGLE}
+                    step={0.5}
+                    value={angle}
+                    onChange={(e) => setAngle(Number(e.target.value))}
+                    className="w-full"
+                    aria-label="Kąt obrotu"
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
