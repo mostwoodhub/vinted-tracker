@@ -19,7 +19,6 @@ type Corner = "nw" | "ne" | "sw" | "se";
 const DISPLAY_MAX_WIDTH = 560;
 const DISPLAY_MAX_HEIGHT = 440;
 const MIN_SIZE = 24;
-const MAX_ANGLE = 45;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
@@ -73,10 +72,6 @@ export function LabelCropModal({
   const [rect, setRect] = useState<Rect | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Small straightening rotation (degrees, + = clockwise) for photos taken
-  // slightly tilted. Applied about the image center on a canvas the same
-  // size as the source, so the live CSS preview matches the saved result.
-  const [angle, setAngle] = useState(0);
 
   const dragState = useRef<{
     mode: "move" | "resize";
@@ -236,27 +231,13 @@ export function LabelCropModal({
         };
 
     const img = await loadImage(sourceUrl);
-    let source: CanvasImageSource = img;
-    if (angle !== 0) {
-      const tilted = document.createElement("canvas");
-      tilted.width = naturalSize.width;
-      tilted.height = naturalSize.height;
-      const tctx = tilted.getContext("2d");
-      if (!tctx) throw new Error("Canvas nie jest obsługiwany w tej przeglądarce");
-      tctx.fillStyle = "#ffffff";
-      tctx.fillRect(0, 0, tilted.width, tilted.height);
-      tctx.translate(tilted.width / 2, tilted.height / 2);
-      tctx.rotate((angle * Math.PI) / 180);
-      tctx.drawImage(img, -naturalSize.width / 2, -naturalSize.height / 2, naturalSize.width, naturalSize.height);
-      source = tilted;
-    }
     let canvas = document.createElement("canvas");
     canvas.width = Math.max(1, cropNatural.width);
     canvas.height = Math.max(1, cropNatural.height);
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas nie jest obsługiwany w tej przeglądarce");
     ctx.drawImage(
-      source,
+      img,
       cropNatural.x,
       cropNatural.y,
       cropNatural.width,
@@ -298,7 +279,6 @@ export function LabelCropModal({
       if (currentIndex + 1 < labelCount) {
         setCollected(next);
         setCurrentIndex((i) => i + 1);
-        setAngle(0);
         if (displaySize) setRect(defaultRect(displaySize.width, displaySize.height));
       } else {
         onDone(next);
@@ -360,7 +340,7 @@ export function LabelCropModal({
               Przesuń i zmień rozmiar ramki, aby wybrać fragment etykiety do zapisania.
             </p>
             <div
-              className="relative touch-none select-none overflow-hidden rounded-[var(--radius-sm)] bg-white"
+              className="relative touch-none select-none overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-bg)]"
               style={{ width: displaySize.width, height: displaySize.height }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -369,12 +349,7 @@ export function LabelCropModal({
                 alt=""
                 draggable={false}
                 className="pointer-events-none absolute inset-0 h-full w-full"
-                style={{
-                  width: displaySize.width,
-                  height: displaySize.height,
-                  transform: `rotate(${angle}deg)`,
-                  transformOrigin: "center",
-                }}
+                style={{ width: displaySize.width, height: displaySize.height }}
               />
               <div
                 onPointerDown={onRectPointerDown}
@@ -400,48 +375,6 @@ export function LabelCropModal({
                   />
                 ))}
               </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`text-sm ${mutedTextClass}`}>Obrót</span>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setAngle((a) => Math.max(-MAX_ANGLE, Math.round((a - 1) * 10) / 10))}
-                className={buttonSecondaryClass}
-                aria-label="Obróć w lewo o 1 stopień"
-              >
-                ↺ −1°
-              </button>
-              <input
-                type="range"
-                min={-MAX_ANGLE}
-                max={MAX_ANGLE}
-                step={0.5}
-                value={angle}
-                disabled={busy}
-                onChange={(e) => setAngle(Number(e.target.value))}
-                className="min-w-24 flex-1"
-                aria-label="Kąt obrotu"
-              />
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setAngle((a) => Math.min(MAX_ANGLE, Math.round((a + 1) * 10) / 10))}
-                className={buttonSecondaryClass}
-                aria-label="Obróć w prawo o 1 stopień"
-              >
-                ↻ +1°
-              </button>
-              <span className="w-12 text-right text-sm tabular-nums text-[var(--color-text)]">
-                {angle > 0 ? "+" : ""}
-                {angle}°
-              </span>
-              {angle !== 0 && (
-                <button type="button" disabled={busy} onClick={() => setAngle(0)} className={buttonSecondaryClass}>
-                  Resetuj
-                </button>
-              )}
             </div>
 
             {error && <p className={errorTextClass}>{error}</p>}
